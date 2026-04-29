@@ -11,20 +11,27 @@ import (
 func SetupRouter(db *database.DB) *gin.Engine {
 	r := gin.Default()
 
+	// -------------------
 	// Health
+	// -------------------
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// -------------------
 	// Public routes
+	// -------------------
 	r.POST("/register", handlers.RegisterHandler(db))
 	r.POST("/login", handlers.LoginHandler(db))
+	r.GET("/products", handlers.GetProductsHandler(db)) // catálogo público
 
+	// -------------------
 	// Protected routes
+	// -------------------
 	authorized := r.Group("/")
 	authorized.Use(middleware.AuthMiddleware())
 
-	// 👤 User info
+	// 👤 User
 	authorized.GET("/me", func(c *gin.Context) {
 		email, _ := c.Get("email")
 
@@ -32,6 +39,9 @@ func SetupRouter(db *database.DB) *gin.Engine {
 			"email": email,
 		})
 	})
+
+	// 🛍️ Products (admin)
+	authorized.POST("/products", handlers.CreateProductHandler(db))
 
 	// 🔐 Admin test
 	authorized.GET("/admin/test", func(c *gin.Context) {
