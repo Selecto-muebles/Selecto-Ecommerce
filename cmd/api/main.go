@@ -2,9 +2,10 @@ package main
 
 import (
 	"log"
-	"selecto-backend/internal/config"
-	"selecto-backend/internal/delivery/http"
-	"selecto-backend/internal/infrastructure/database"
+
+	"Selecto-Ecommerce/internal/config"
+	httpDelivery "Selecto-Ecommerce/internal/delivery/http"
+	"Selecto-Ecommerce/internal/infrastructure/database"
 )
 
 func main() {
@@ -12,10 +13,10 @@ func main() {
 
 	// DB
 	db := database.NewPostgresPool(cfg.DatabaseURL)
-	defer db.Close()
+	defer db.Pool.Close()
 
-	// Router
-	router := http.SetupRouter()
+	// Router (ahora recibe db)
+	router := httpDelivery.SetupRouter(db)
 
 	log.Printf("🚀 Server running on port %s", cfg.Port)
 	router.Run(":" + cfg.Port)
