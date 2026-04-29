@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/utils"
 
@@ -29,11 +30,13 @@ func RegisterHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 👇 agregamos role por defecto
 		_, err = db.Pool.Exec(
 			c,
-			"INSERT INTO users (email, password) VALUES ($1, $2)",
+			"INSERT INTO users (email, password, role) VALUES ($1, $2, $3)",
 			input.Email,
 			string(hashedPassword),
+			"user",
 		)
 
 		if err != nil {
@@ -60,12 +63,13 @@ func LoginHandler(db *database.DB) gin.HandlerFunc {
 		}
 
 		var storedPassword string
+		var role string
 
 		err := db.Pool.QueryRow(
 			c,
-			"SELECT password FROM users WHERE email=$1",
+			"SELECT password, role FROM users WHERE email=$1",
 			input.Email,
-		).Scan(&storedPassword)
+		).Scan(&storedPassword, &role)
 
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
@@ -78,7 +82,7 @@ func LoginHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 
-		token, err := utils.GenerateToken(input.Email)
+		token, err := utils.GenerateToken(input.Email, role)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 			return
@@ -86,6 +90,7 @@ func LoginHandler(db *database.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{
 			"token": token,
+			"role":  role, // 👈 útil para frontend/admin
 		})
 	}
 }

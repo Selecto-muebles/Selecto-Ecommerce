@@ -44,6 +44,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		// guardamos el email en contexto
 		c.Set("email", claims["email"])
+		c.Set("role", claims["role"])
 
 		c.Next()
 	}
