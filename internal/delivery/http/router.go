@@ -24,11 +24,26 @@ func SetupRouter(db *database.DB) *gin.Engine {
 	authorized := r.Group("/")
 	authorized.Use(middleware.AuthMiddleware())
 
+	// 👤 User info
 	authorized.GET("/me", func(c *gin.Context) {
 		email, _ := c.Get("email")
 
 		c.JSON(200, gin.H{
 			"email": email,
+		})
+	})
+
+	// 🔐 Admin test
+	authorized.GET("/admin/test", func(c *gin.Context) {
+		role, _ := c.Get("role")
+
+		if role != "admin" {
+			c.JSON(403, gin.H{"error": "forbidden"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message": "welcome admin",
 		})
 	})
 

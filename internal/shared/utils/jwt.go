@@ -8,9 +8,10 @@ import (
 
 var jwtSecret = []byte("supersecret") // después lo pasamos a .env
 
-func GenerateToken(email string) (string, error) {
+func GenerateToken(email string, role string) (string, error) {
 	claims := jwt.MapClaims{
 		"email": email,
+		"role":  role,
 		"exp":   time.Now().Add(time.Hour * 72).Unix(),
 	}
 
