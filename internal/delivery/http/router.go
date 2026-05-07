@@ -43,6 +43,8 @@ func SetupRouter(db *database.DB) *gin.Engine {
 	// 🛍️ Products (admin)
 	authorized.POST("/products", handlers.CreateProductHandler(db))
 	authorized.POST("/orders", handlers.CreateOrderHandler(db))
+	authorized.GET("/admin/metrics", handlers.GetMetricsHandler(db))
+	authorized.POST("/checkout", handlers.CheckoutHandler())
 
 	// 🔐 Admin test
 	authorized.GET("/admin/test", func(c *gin.Context) {
