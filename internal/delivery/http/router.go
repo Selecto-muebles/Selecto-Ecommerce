@@ -1,6 +1,8 @@
 package http
 
 import (
+	"net/http"
+
 	"Selecto-Ecommerce/internal/delivery/http/handlers"
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
 	"Selecto-Ecommerce/internal/infrastructure/database"
@@ -15,7 +17,7 @@ func SetupRouter(db *database.DB) *gin.Engine {
 	// Health
 	// -------------------
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	// -------------------
@@ -24,6 +26,7 @@ func SetupRouter(db *database.DB) *gin.Engine {
 	r.POST("/register", handlers.RegisterHandler(db))
 	r.POST("/login", handlers.LoginHandler(db))
 	r.GET("/products", handlers.GetProductsHandler(db)) // catálogo público
+	r.POST("/payments/webhook", handlers.PaymentWebhookHandler(db))
 
 	// -------------------
 	// Protected routes
@@ -35,7 +38,7 @@ func SetupRouter(db *database.DB) *gin.Engine {
 	authorized.GET("/me", func(c *gin.Context) {
 		email, _ := c.Get("email")
 
-		c.JSON(200, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"email": email,
 		})
 	})
@@ -43,19 +46,21 @@ func SetupRouter(db *database.DB) *gin.Engine {
 	// 🛍️ Products (admin)
 	authorized.POST("/products", handlers.CreateProductHandler(db))
 	authorized.POST("/orders", handlers.CreateOrderHandler(db))
+	authorized.GET("/orders/:id", handlers.GetOrderHandler(db))
+	authorized.GET("/my-orders", handlers.GetMyOrdersHandler(db))
 	authorized.GET("/admin/metrics", handlers.GetMetricsHandler(db))
-	authorized.POST("/checkout", handlers.CheckoutHandler())
+	authorized.POST("/checkout", handlers.CheckoutHandler(db))
 
 	// 🔐 Admin test
 	authorized.GET("/admin/test", func(c *gin.Context) {
 		role, _ := c.Get("role")
 
 		if role != "admin" {
-			c.JSON(403, gin.H{"error": "forbidden"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 
-		c.JSON(200, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"message": "welcome admin",
 		})
 	})

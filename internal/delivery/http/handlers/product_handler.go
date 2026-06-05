@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
+
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,7 +40,7 @@ func GetProductsHandler(db *database.DB) gin.HandlerFunc {
 			}
 
 			products = append(products, gin.H{
-				"id":    id,
+				"id":    utils.EncodeID(id),
 				"name":  name,
 				"price": price,
 				"stock": stock,
@@ -65,19 +68,30 @@ func CreateProductHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err := db.Pool.Exec(
+		if input.Name == "" || input.Price < 0 || input.Stock < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name, price and stock must be valid"})
+			return
+		}
+
+		var productID int
+		err := db.Pool.QueryRow(
 			c,
-			"INSERT INTO products (name, price, stock) VALUES ($1, $2, $3)",
+			"INSERT INTO products (name, price, stock) VALUES ($1, $2, $3) RETURNING id",
 			input.Name,
 			input.Price,
 			input.Stock,
-		)
+		).Scan(&productID)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "product created"})
+		log.Printf("product created: product_id=%d public_id=%s", productID, utils.EncodeID(productID))
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "product created",
+			"product_id": utils.EncodeID(productID),
+		})
 	}
 }
