@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+
 	"Selecto-Ecommerce/internal/infrastructure/database"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,7 @@ func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
 		// total revenue
 		err := db.Pool.QueryRow(
 			c,
-			"SELECT COALESCE(SUM(total), 0) FROM orders",
+			"SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='paid'",
 		).Scan(&totalRevenue)
 
 		if err != nil {
