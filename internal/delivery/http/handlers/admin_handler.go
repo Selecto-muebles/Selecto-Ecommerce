@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/apperrors"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +14,7 @@ func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
 
 		role, _ := c.Get("role")
 		if role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "forbidden", nil)
 			return
 		}
 
@@ -27,7 +28,7 @@ func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
 		).Scan(&totalRevenue)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 
@@ -38,7 +39,7 @@ func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
 		).Scan(&totalOrders)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 

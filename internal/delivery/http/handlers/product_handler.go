@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ func GetProductsHandler(db *database.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rows, err := db.Pool.Query(c, "SELECT id, name, price, stock FROM products")
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 		defer rows.Close()
@@ -57,19 +58,19 @@ func CreateProductHandler(db *database.DB) gin.HandlerFunc {
 
 		role, _ := c.Get("role")
 		if role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "forbidden", nil)
 			return
 		}
 
 		var input CreateProductInput
 
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+			apperrors.BadRequest(c, "invalid input")
 			return
 		}
 
 		if input.Name == "" || input.Price < 0 || input.Stock < 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "name, price and stock must be valid"})
+			apperrors.BadRequest(c, "name, price and stock must be valid")
 			return
 		}
 
@@ -83,7 +84,7 @@ func CreateProductHandler(db *database.DB) gin.HandlerFunc {
 		).Scan(&productID)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 

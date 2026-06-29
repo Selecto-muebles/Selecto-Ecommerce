@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
+	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -15,18 +20,24 @@ type RegisterInput struct {
 	Password string `json:"password"`
 }
 
-func RegisterHandler(db *database.DB) gin.HandlerFunc {
+func RegisterHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_ = cfg
 		var input RegisterInput
 
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+			apperrors.BadRequest(c, "invalid input")
+			return
+		}
+		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+		if input.Email == "" || !strings.Contains(input.Email, "@") || len(input.Password) < 8 {
+			apperrors.BadRequest(c, "email and password must be valid")
 			return
 		}
 
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+			apperrors.Internal(c)
 			return
 		}
 
@@ -40,7 +51,12 @@ func RegisterHandler(db *database.DB) gin.HandlerFunc {
 		)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "user already exists", nil)
+				return
+			}
+			apperrors.Internal(c)
 			return
 		}
 
@@ -53,14 +69,15 @@ type LoginInput struct {
 	Password string `json:"password"`
 }
 
-func LoginHandler(db *database.DB) gin.HandlerFunc {
+func LoginHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input LoginInput
 
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+			apperrors.BadRequest(c, "invalid input")
 			return
 		}
+		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 
 		var storedPassword string
 		var role string
@@ -72,19 +89,19 @@ func LoginHandler(db *database.DB) gin.HandlerFunc {
 		).Scan(&storedPassword, &role)
 
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid credentials", nil)
 			return
 		}
 
 		err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(input.Password))
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid credentials", nil)
 			return
 		}
 
-		token, err := utils.GenerateToken(input.Email, role)
+		token, err := utils.GenerateToken(input.Email, role, cfg.JWTSecret, cfg.JWTTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+			apperrors.Internal(c)
 			return
 		}
 

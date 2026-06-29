@@ -2,15 +2,21 @@ package handlers
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
+	"Selecto-Ecommerce/internal/config"
+	"Selecto-Ecommerce/internal/delivery/http/middleware"
+	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/money"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -21,18 +27,18 @@ type CheckoutRequest struct {
 	OrderID utils.PublicID `json:"order_id"`
 }
 
-func CheckoutHandler(db *database.DB) gin.HandlerFunc {
+func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input CheckoutRequest
 
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+			apperrors.BadRequest(c, "invalid input")
 			return
 		}
 
 		orderID := input.OrderID.Int()
 		if orderID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order_id"})
+			apperrors.BadRequest(c, "invalid order_id")
 			return
 		}
 
@@ -40,64 +46,152 @@ func CheckoutHandler(db *database.DB) gin.HandlerFunc {
 		email := fmt.Sprint(emailValue)
 
 		var status string
-		var total float64
+		var total money.Cents
+		var activePreferenceID sql.NullString
+		var activeCheckoutURL sql.NullString
+		var activeEnvironment sql.NullString
 		err := db.Pool.QueryRow(
 			c,
-			`SELECT o.status, o.total
+			`SELECT o.status, ROUND(o.total * 100)::BIGINT, o.active_payment_preference_id, o.active_checkout_url, o.active_payment_environment
 			 FROM orders o
 			 JOIN users u ON u.id = o.user_id
-			 WHERE o.id=$1 AND u.email=$2`,
+			 WHERE o.id=$1 AND u.email=$2
+			   AND (
+			     COALESCE(o.expires_at, o.created_at + make_interval(secs => $3)) > NOW()
+			     OR o.active_payment_preference_id IS NOT NULL
+			   )`,
 			orderID,
 			email,
-		).Scan(&status, &total)
+			int(cfg.OrderPendingTTL.Seconds()),
+		).Scan(&status, &total, &activePreferenceID, &activeCheckoutURL, &activeEnvironment)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "order not found or expired", nil)
 				return
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 
-		if status != "pending" {
-			log.Printf("checkout rejected: order_id=%d public_id=%s status=%s", orderID, utils.EncodeID(orderID), status)
-			c.JSON(http.StatusConflict, gin.H{"error": "order is not pending", "status": status})
+		if domain.OrderStatus(status) != domain.OrderStatusPending {
+			logger.Info("checkout_rejected", "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", status)
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "order is not pending", gin.H{"status": status})
 			return
 		}
 
-		paymentsURL := os.Getenv("PAYMENTS_SERVICE_URL")
-		if paymentsURL == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "PAYMENTS_SERVICE_URL is not configured"})
+		if activePreferenceID.Valid && activeCheckoutURL.Valid && activePreferenceID.String != "" && activeCheckoutURL.String != "" {
+			result := gin.H{
+				"preference_id": activePreferenceID.String,
+				"checkout_url":  activeCheckoutURL.String,
+				"order_id":      utils.EncodeID(orderID),
+			}
+			if activeEnvironment.Valid && activeEnvironment.String != "" {
+				result["environment"] = activeEnvironment.String
+			}
+			c.JSON(http.StatusOK, result)
 			return
 		}
 
-		log.Printf("checkout started: order_id=%d public_id=%s amount=%.2f", orderID, utils.EncodeID(orderID), total)
+		if cfg.PaymentsServiceURL == "" {
+			apperrors.Internal(c)
+			return
+		}
+
+		logger.Info("checkout_started", "order_id", orderID, "public_id", utils.EncodeID(orderID), "amount_cents", int64(total))
 
 		payload, _ := json.Marshal(gin.H{
 			"order_id": orderID,
-			"amount":   total,
+			"amount":   total.Float64(),
 		})
 
 		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Post(paymentsURL+"/create-preference", "application/json", bytes.NewBuffer(payload))
+		req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, cfg.PaymentsServiceURL+"/create-preference", bytes.NewBuffer(payload))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "payments service unreachable"})
+			apperrors.Internal(c)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Request-ID", middleware.RequestID(c))
+		req.Header.Set("X-Correlation-ID", middleware.CorrelationID(c))
+
+		resp, err := client.Do(req)
+		if err != nil {
+			apperrors.JSON(c, http.StatusBadGateway, apperrors.CodeBadGateway, "payments service unreachable", nil)
 			return
 		}
 		defer resp.Body.Close()
 
 		var result map[string]interface{}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "invalid payments service response"})
+			apperrors.JSON(c, http.StatusBadGateway, apperrors.CodeBadGateway, "invalid payments service response", nil)
 			return
 		}
 
 		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error":   "payments service rejected checkout",
-				"details": result,
-			})
+			apperrors.JSON(c, http.StatusBadGateway, apperrors.CodeBadGateway, "payments service rejected checkout", gin.H{"payments_response": result})
 			return
+		}
+
+		preferenceID, _ := result["preference_id"].(string)
+		checkoutURL, _ := result["checkout_url"].(string)
+		environment, _ := result["environment"].(string)
+		if preferenceID == "" || checkoutURL == "" {
+			apperrors.JSON(c, http.StatusBadGateway, apperrors.CodeBadGateway, "payments service response missing preference", nil)
+			return
+		}
+
+		commandTag, err := db.Pool.Exec(
+			c,
+			`UPDATE orders
+			 SET active_payment_preference_id=$1,
+			     active_checkout_url=$2,
+			     active_payment_environment=$3
+			 WHERE id=$4 AND status=$5 AND active_payment_preference_id IS NULL`,
+			preferenceID,
+			checkoutURL,
+			environment,
+			orderID,
+			domain.OrderStatusPending,
+		)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if commandTag.RowsAffected() == 0 {
+			var existingPreferenceID, existingCheckoutURL, existingEnvironment sql.NullString
+			if err := db.Pool.QueryRow(
+				c,
+				`SELECT active_payment_preference_id, active_checkout_url, active_payment_environment
+				 FROM orders
+				 WHERE id=$1 AND status=$2`,
+				orderID,
+				domain.OrderStatusPending,
+			).Scan(&existingPreferenceID, &existingCheckoutURL, &existingEnvironment); err == nil && existingPreferenceID.Valid && existingCheckoutURL.Valid {
+				result := gin.H{
+					"preference_id": existingPreferenceID.String,
+					"checkout_url":  existingCheckoutURL.String,
+					"order_id":      utils.EncodeID(orderID),
+				}
+				if existingEnvironment.Valid {
+					result["environment"] = existingEnvironment.String
+				}
+				c.JSON(http.StatusOK, result)
+				return
+			}
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "order is not pending", nil)
+			return
+		}
+
+		if _, err := db.Pool.Exec(
+			c,
+			"INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, $2, $3, $4, $5)",
+			email,
+			"checkout_preference_created",
+			"order",
+			orderID,
+			fmt.Sprintf(`{"preference_id":%q}`, preferenceID),
+		); err != nil {
+			log.Printf("audit log failed: %v", err)
 		}
 
 		result["order_id"] = utils.EncodeID(orderID)
