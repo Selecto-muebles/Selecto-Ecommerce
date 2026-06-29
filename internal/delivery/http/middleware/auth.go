@@ -4,47 +4,40 @@ import (
 	"net/http"
 	"strings"
 
+	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/utils"
+
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("supersecret")
-
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "missing token", nil)
 			c.Abort()
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
+		parts := strings.SplitN(authHeader, " ", 2)
 
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token format"})
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid token format", nil)
 			c.Abort()
 			return
 		}
 
 		tokenStr := parts[1]
-
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-			return jwtSecret, nil
-		})
-
-		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		claims, err := utils.ValidateToken(tokenStr, jwtSecret)
+		if err != nil {
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid token", nil)
 			c.Abort()
 			return
 		}
 
-		claims := token.Claims.(jwt.MapClaims)
-
-		// guardamos el email en contexto
-		c.Set("email", claims["email"])
-		c.Set("role", claims["role"])
+		c.Set("email", claims.Email)
+		c.Set("role", claims.Role)
 
 		c.Next()
 	}

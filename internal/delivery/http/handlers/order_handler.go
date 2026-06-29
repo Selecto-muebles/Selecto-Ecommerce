@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"time"
 
+	"Selecto-Ecommerce/internal/config"
+	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/money"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -49,23 +53,23 @@ type OrderResponse struct {
 	Items     []OrderItemResponse `json:"items"`
 }
 
-func CreateOrderHandler(db *database.DB) gin.HandlerFunc {
+func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		emailValue, _ := c.Get("email")
 		email := fmt.Sprint(emailValue)
 
 		var input CreateOrderInput
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+			apperrors.BadRequest(c, "invalid input")
 			return
 		}
 
 		if len(input.Items) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "order must contain at least one item"})
+			apperrors.BadRequest(c, "order must contain at least one item")
 			return
 		}
 		if len(input.Items) > maxItemsPerOrder {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "too many items in order"})
+			apperrors.BadRequest(c, "too many items in order")
 			return
 		}
 
@@ -75,22 +79,16 @@ func CreateOrderHandler(db *database.DB) gin.HandlerFunc {
 		for _, item := range input.Items {
 			productID := item.ProductID.Int()
 			if productID <= 0 || item.Quantity <= 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "product_id and quantity must be positive"})
+				apperrors.BadRequest(c, "product_id and quantity must be positive")
 				return
 			}
 			if item.Quantity > maxQuantityPerItem {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":        "quantity exceeds per-item limit",
-					"max_quantity": maxQuantityPerItem,
-				})
+				apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "quantity exceeds per-item limit", gin.H{"max_quantity": maxQuantityPerItem})
 				return
 			}
 			totalQuantity += item.Quantity
 			if totalQuantity > maxTotalQuantityPerOrder {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":              "order quantity limit exceeded",
-					"max_total_quantity": maxTotalQuantityPerOrder,
-				})
+				apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "order quantity limit exceeded", gin.H{"max_total_quantity": maxTotalQuantityPerOrder})
 				return
 			}
 			if _, exists := itemsByProduct[productID]; !exists {
@@ -102,7 +100,7 @@ func CreateOrderHandler(db *database.DB) gin.HandlerFunc {
 
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not start transaction"})
+			apperrors.Internal(c)
 			return
 		}
 		defer tx.Rollback(c)
@@ -111,46 +109,42 @@ func CreateOrderHandler(db *database.DB) gin.HandlerFunc {
 		err = tx.QueryRow(c, "SELECT id FROM users WHERE email=$1", email).Scan(&userID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+				apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "user not found", nil)
 				return
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 
-		var total float64
+		var total money.Cents
 		type reservedItem struct {
 			ProductID int
 			Quantity  int
-			Price     float64
+			Price     money.Cents
 		}
 		reservedItems := make([]reservedItem, 0, len(itemsByProduct))
 
 		for _, productID := range productIDs {
 			quantity := itemsByProduct[productID]
-			var price float64
+			var priceCents int64
 			var stock int
 
 			err := tx.QueryRow(
 				c,
-				"SELECT price, stock FROM products WHERE id=$1 FOR UPDATE",
+				"SELECT ROUND(price * 100)::BIGINT, stock FROM products WHERE id=$1 FOR UPDATE",
 				productID,
-			).Scan(&price, &stock)
+			).Scan(&priceCents, &stock)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "invalid product", "product_id": utils.EncodeID(productID)})
+					apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "invalid product", gin.H{"product_id": utils.EncodeID(productID)})
 					return
 				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				apperrors.Internal(c)
 				return
 			}
 
 			if stock < quantity {
-				c.JSON(http.StatusConflict, gin.H{
-					"error":      "insufficient stock",
-					"product_id": utils.EncodeID(productID),
-					"available":  stock,
-				})
+				apperrors.JSON(c, http.StatusConflict, apperrors.CodeInsufficientStock, "insufficient stock", gin.H{"product_id": utils.EncodeID(productID), "available": stock})
 				return
 			}
 
@@ -161,28 +155,31 @@ func CreateOrderHandler(db *database.DB) gin.HandlerFunc {
 				productID,
 			)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				apperrors.Internal(c)
 				return
 			}
-			log.Printf("stock reserved: product_id=%d public_id=%s quantity=%d remaining=%d", productID, utils.EncodeID(productID), quantity, stock-quantity)
+			logger.Info("stock_reserved", "product_id", productID, "public_id", utils.EncodeID(productID), "quantity", quantity, "remaining", stock-quantity)
 
-			total += price * float64(quantity)
+			itemPrice := money.Cents(priceCents)
+			total += itemPrice * money.Cents(quantity)
 			reservedItems = append(reservedItems, reservedItem{
 				ProductID: productID,
 				Quantity:  quantity,
-				Price:     price,
+				Price:     itemPrice,
 			})
 		}
 
 		var orderID int
 		err = tx.QueryRow(
 			c,
-			"INSERT INTO orders (user_id, status, total) VALUES ($1, 'pending', $2) RETURNING id",
+			"INSERT INTO orders (user_id, status, total, expires_at) VALUES ($1, $2, $3, NOW() + make_interval(secs => $4)) RETURNING id",
 			userID,
-			total,
+			domain.OrderStatusPending,
+			total.DecimalString(),
+			int(cfg.OrderPendingTTL.Seconds()),
 		).Scan(&orderID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 
@@ -193,25 +190,38 @@ func CreateOrderHandler(db *database.DB) gin.HandlerFunc {
 				orderID,
 				item.ProductID,
 				item.Quantity,
-				item.Price,
+				item.Price.DecimalString(),
 			)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				apperrors.Internal(c)
 				return
 			}
 		}
 
-		if err := tx.Commit(c); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not commit order"})
+		if _, err := tx.Exec(
+			c,
+			"INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, $2, $3, $4, $5)",
+			email,
+			"order_created",
+			"order",
+			orderID,
+			fmt.Sprintf(`{"total_cents":%d}`, total),
+		); err != nil {
+			apperrors.Internal(c)
 			return
 		}
 
-		log.Printf("order created: order_id=%d public_id=%s user_id=%d total=%.2f status=pending", orderID, utils.EncodeID(orderID), userID, total)
+		if err := tx.Commit(c); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+
+		logger.Info("order_created", "order_id", orderID, "public_id", utils.EncodeID(orderID), "user_id", userID, "total_cents", int64(total), "status", domain.OrderStatusPending)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"order_id": utils.EncodeID(orderID),
-			"status":   "pending",
-			"total":    total,
+			"status":   string(domain.OrderStatusPending),
+			"total":    total.Float64(),
 		})
 	}
 }
@@ -220,7 +230,7 @@ func GetOrderHandler(db *database.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderID, err := utils.DecodeID(c.Param("id"))
 		if err != nil || orderID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order id"})
+			apperrors.BadRequest(c, "invalid order id")
 			return
 		}
 
@@ -232,10 +242,10 @@ func GetOrderHandler(db *database.DB) gin.HandlerFunc {
 		order, err := fetchOrder(c, db, orderID, email, role == "admin")
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "order not found", nil)
 				return
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 
@@ -258,7 +268,7 @@ func GetMyOrdersHandler(db *database.DB) gin.HandlerFunc {
 			email,
 		)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apperrors.Internal(c)
 			return
 		}
 		defer rows.Close()
@@ -268,7 +278,7 @@ func GetMyOrdersHandler(db *database.DB) gin.HandlerFunc {
 			var orderID int
 			var order OrderResponse
 			if err := rows.Scan(&orderID, &order.UserID, &order.Status, &order.Total, &order.CreatedAt); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				apperrors.Internal(c)
 				return
 			}
 			order.ID = utils.EncodeID(orderID)
@@ -330,6 +340,14 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 }
 
 func ReleaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan time.Duration) (int64, error) {
+	return releaseExpiredPendingOrders(ctx, db, olderThan, false)
+}
+
+func ReleaseExpiredPendingOrdersWithAudit(db *database.DB, olderThan time.Duration) (int64, error) {
+	return releaseExpiredPendingOrders(context.Background(), db, olderThan, true)
+}
+
+func releaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan time.Duration, writeAudit bool) (int64, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -340,7 +358,9 @@ func ReleaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan
 		ctx,
 		`SELECT id
 		 FROM orders
-		 WHERE status='pending' AND created_at < NOW() - make_interval(secs => $1)
+		 WHERE status='pending'
+		   AND active_payment_preference_id IS NULL
+		   AND COALESCE(expires_at, created_at + make_interval(secs => $1)) < NOW()
 		 FOR UPDATE`,
 		int(olderThan.Seconds()),
 	)
@@ -367,8 +387,21 @@ func ReleaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan
 		if err := restoreOrderStock(ctx, tx, orderID); err != nil {
 			return 0, err
 		}
-		if _, err := tx.Exec(ctx, "UPDATE orders SET status='cancelled' WHERE id=$1", orderID); err != nil {
+		if _, err := tx.Exec(ctx, "UPDATE orders SET status='cancelled', cancelled_at=NOW() WHERE id=$1", orderID); err != nil {
 			return 0, err
+		}
+		if writeAudit {
+			if _, err := tx.Exec(
+				ctx,
+				"INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, $2, $3, $4, $5)",
+				"system",
+				"order_reservation_expired",
+				"order",
+				orderID,
+				"{}",
+			); err != nil {
+				return 0, err
+			}
 		}
 	}
 
