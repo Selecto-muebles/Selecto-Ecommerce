@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +30,7 @@ func RequestContext(logger *slog.Logger) gin.HandlerFunc {
 		start := time.Now()
 		c.Next()
 
-		logger.Info("http_request",
+		logger.Info(logging.EventHTTPRouteCompleted,
 			"request_id", requestID,
 			"correlation_id", correlationID,
 			"method", c.Request.Method,

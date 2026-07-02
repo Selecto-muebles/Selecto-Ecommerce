@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/money"
 	"Selecto-Ecommerce/internal/shared/utils"
 
@@ -74,7 +74,7 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 		}
 
 		if domain.OrderStatus(status) != domain.OrderStatusPending {
-			logger.Info("checkout_rejected", "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", status)
+			logger.Info(logging.EventCheckoutRejected, "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", status)
 			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "order is not pending", gin.H{"status": status})
 			return
 		}
@@ -88,6 +88,7 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			if activeEnvironment.Valid && activeEnvironment.String != "" {
 				result["environment"] = activeEnvironment.String
 			}
+			logger.Info(logging.EventCheckoutPreferenceReused, "order_id", orderID, "public_id", utils.EncodeID(orderID), "preference_id", activePreferenceID.String)
 			c.JSON(http.StatusOK, result)
 			return
 		}
@@ -97,7 +98,7 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			return
 		}
 
-		logger.Info("checkout_started", "order_id", orderID, "public_id", utils.EncodeID(orderID), "amount_cents", int64(total))
+		logger.Info(logging.EventCheckoutStarted, "order_id", orderID, "public_id", utils.EncodeID(orderID), "amount_cents", int64(total))
 
 		payload, _ := json.Marshal(gin.H{
 			"order_id": orderID,
@@ -175,6 +176,7 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 				if existingEnvironment.Valid {
 					result["environment"] = existingEnvironment.String
 				}
+				logger.Info(logging.EventCheckoutPreferenceReused, "order_id", orderID, "public_id", utils.EncodeID(orderID), "preference_id", existingPreferenceID.String)
 				c.JSON(http.StatusOK, result)
 				return
 			}
@@ -191,11 +193,12 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			orderID,
 			fmt.Sprintf(`{"preference_id":%q}`, preferenceID),
 		); err != nil {
-			log.Printf("audit log failed: %v", err)
+			logger.Error(logging.EventCheckoutAuditFailed, "order_id", orderID, "public_id", utils.EncodeID(orderID), "preference_id", preferenceID, "error", err)
 		}
 
 		result["order_id"] = utils.EncodeID(orderID)
 
+		logger.Info(logging.EventCheckoutPreferenceCreated, "order_id", orderID, "public_id", utils.EncodeID(orderID), "preference_id", preferenceID, "environment", environment)
 		c.JSON(http.StatusOK, result)
 	}
 }

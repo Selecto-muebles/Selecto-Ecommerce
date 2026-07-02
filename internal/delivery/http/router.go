@@ -9,6 +9,7 @@ import (
 	"Selecto-Ecommerce/internal/delivery/http/handlers"
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -21,28 +22,18 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	r.Use(middleware.RateLimit(cfg.RateLimitPerMinute))
 	r.Use(cors.New(corsConfig(cfg)))
 
-	// -------------------
-	// Health
-	// -------------------
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// -------------------
-	// Public routes
-	// -------------------
-	r.POST("/register", handlers.RegisterHandler(db, cfg))
-	r.POST("/login", handlers.LoginHandler(db, cfg))
-	r.GET("/products", handlers.GetProductsHandler(db)) // catálogo público
+	r.POST("/register", handlers.RegisterHandler(db, cfg, logger))
+	r.POST("/login", handlers.LoginHandler(db, cfg, logger))
+	r.GET("/products", handlers.GetProductsHandler(db, logger))
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, logger))
 
-	// -------------------
-	// Protected routes
-	// -------------------
 	authorized := r.Group("/")
 	authorized.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 
-	// 👤 User
 	authorized.GET("/me", func(c *gin.Context) {
 		email, _ := c.Get("email")
 
@@ -51,23 +42,17 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 		})
 	})
 
-	// 🛍️ Products (admin)
-	authorized.POST("/products", handlers.CreateProductHandler(db))
 	authorized.POST("/orders", handlers.CreateOrderHandler(db, cfg, logger))
 	authorized.GET("/orders/:id", handlers.GetOrderHandler(db))
 	authorized.GET("/my-orders", handlers.GetMyOrdersHandler(db))
-	authorized.GET("/admin/metrics", handlers.GetMetricsHandler(db))
 	authorized.POST("/checkout", handlers.CheckoutHandler(db, cfg, logger))
 
-	// 🔐 Admin test
-	authorized.GET("/admin/test", func(c *gin.Context) {
-		role, _ := c.Get("role")
+	admin := authorized.Group("/")
+	admin.Use(middleware.RequireAdmin(db, logger))
 
-		if role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			return
-		}
-
+	admin.POST("/products", handlers.CreateProductHandler(db, logger))
+	admin.GET("/admin/metrics", handlers.GetMetricsHandler(db, logger))
+	admin.GET("/admin/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "welcome admin",
 		})
@@ -99,11 +84,11 @@ func StartExpiredOrderWorker(db *database.DB, cfg *config.Config, logger *slog.L
 		for range ticker.C {
 			released, err := handlers.ReleaseExpiredPendingOrdersWithAudit(db, cfg.OrderPendingTTL)
 			if err != nil {
-				logger.Error("expired_order_release_failed", "error", err)
+				logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
 				continue
 			}
 			if released > 0 {
-				logger.Info("expired_order_release_completed", "orders_released", released)
+				logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", released)
 			}
 		}
 	}()
