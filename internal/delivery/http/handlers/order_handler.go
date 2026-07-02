@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"time"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/collection"
+	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/money"
 	"Selecto-Ecommerce/internal/shared/utils"
 
@@ -53,6 +54,14 @@ type OrderResponse struct {
 	Items     []OrderItemResponse `json:"items"`
 }
 
+func invalidOrderItem(item OrderItemInput) bool {
+	return item.ProductID.Int() <= 0 || item.Quantity <= 0
+}
+
+func exceedsItemQuantityLimit(item OrderItemInput) bool {
+	return item.Quantity > maxQuantityPerItem
+}
+
 func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		emailValue, _ := c.Get("email")
@@ -73,30 +82,28 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			return
 		}
 
-		itemsByProduct := make(map[int]int)
-		productIDs := make([]int, 0, len(input.Items))
-		totalQuantity := 0
-		for _, item := range input.Items {
-			productID := item.ProductID.Int()
-			if productID <= 0 || item.Quantity <= 0 {
-				apperrors.BadRequest(c, "product_id and quantity must be positive")
-				return
-			}
-			if item.Quantity > maxQuantityPerItem {
-				apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "quantity exceeds per-item limit", gin.H{"max_quantity": maxQuantityPerItem})
-				return
-			}
-			totalQuantity += item.Quantity
-			if totalQuantity > maxTotalQuantityPerOrder {
-				apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "order quantity limit exceeded", gin.H{"max_total_quantity": maxTotalQuantityPerOrder})
-				return
-			}
-			if _, exists := itemsByProduct[productID]; !exists {
-				productIDs = append(productIDs, productID)
-			}
-			itemsByProduct[productID] += item.Quantity
+		if _, found := collection.Find(input.Items, invalidOrderItem); found {
+			apperrors.BadRequest(c, "product_id and quantity must be positive")
+			return
 		}
-		sort.Ints(productIDs)
+		if _, found := collection.Find(input.Items, exceedsItemQuantityLimit); found {
+			apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "quantity exceeds per-item limit", gin.H{"max_quantity": maxQuantityPerItem})
+			return
+		}
+		totalQuantity := collection.Reduce(input.Items, 0, func(total int, item OrderItemInput) int {
+			return total + item.Quantity
+		})
+		if totalQuantity > maxTotalQuantityPerOrder {
+			apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "order quantity limit exceeded", gin.H{"max_total_quantity": maxTotalQuantityPerOrder})
+			return
+		}
+
+		itemsByProduct := collection.GroupSumByInt(input.Items, func(item OrderItemInput) int {
+			return item.ProductID.Int()
+		}, func(item OrderItemInput) int {
+			return item.Quantity
+		})
+		productIDs := collection.SortedIntKeys(itemsByProduct)
 
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
@@ -131,7 +138,7 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 
 			err := tx.QueryRow(
 				c,
-				"SELECT ROUND(price * 100)::BIGINT, stock FROM products WHERE id=$1 FOR UPDATE",
+				"SELECT ROUND(price * 100)::BIGINT, stock FROM products WHERE id=$1 AND active = TRUE FOR UPDATE",
 				productID,
 			).Scan(&priceCents, &stock)
 			if err != nil {
@@ -158,7 +165,7 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 				apperrors.Internal(c)
 				return
 			}
-			logger.Info("stock_reserved", "product_id", productID, "public_id", utils.EncodeID(productID), "quantity", quantity, "remaining", stock-quantity)
+			logger.Info(logging.EventStockReserved, "product_id", productID, "public_id", utils.EncodeID(productID), "quantity", quantity, "remaining_stock", stock-quantity)
 
 			itemPrice := money.Cents(priceCents)
 			total += itemPrice * money.Cents(quantity)
@@ -216,7 +223,7 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			return
 		}
 
-		logger.Info("order_created", "order_id", orderID, "public_id", utils.EncodeID(orderID), "user_id", userID, "total_cents", int64(total), "status", domain.OrderStatusPending)
+		logger.Info(logging.EventOrderCreated, "order_id", orderID, "public_id", utils.EncodeID(orderID), "user_id", userID, "total_cents", int64(total), "status", domain.OrderStatusPending)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"order_id": utils.EncodeID(orderID),

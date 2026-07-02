@@ -2,11 +2,12 @@ package config
 
 import (
 	"errors"
-	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"Selecto-Ecommerce/internal/shared/collection"
 
 	"github.com/joho/godotenv"
 )
@@ -26,10 +27,7 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("No .env file found")
-	}
+	_ = godotenv.Load()
 
 	return &Config{
 		Port:                  getEnv("PORT", "8080"),
@@ -114,22 +112,12 @@ func getIntEnv(key string, fallback int) int {
 }
 
 func splitCSV(value string) []string {
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
+	return collection.Filter(
+		collection.Map(strings.Split(value, ","), strings.TrimSpace),
+		func(part string) bool { return part != "" },
+	)
 }
 
 func allowsAllOrigins(origins []string) bool {
-	for _, origin := range origins {
-		if origin == "*" {
-			return true
-		}
-	}
-	return false
+	return collection.Contains(origins, func(origin string) bool { return origin == "*" })
 }

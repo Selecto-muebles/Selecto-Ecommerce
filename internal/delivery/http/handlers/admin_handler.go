@@ -1,27 +1,21 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/gin-gonic/gin"
 )
 
-func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
+func GetMetricsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
-		role, _ := c.Get("role")
-		if role != "admin" {
-			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "forbidden", nil)
-			return
-		}
-
 		var totalRevenue float64
 		var totalOrders int
 
-		// total revenue
 		err := db.Pool.QueryRow(
 			c,
 			"SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='paid'",
@@ -32,7 +26,6 @@ func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 
-		// total orders
 		err = db.Pool.QueryRow(
 			c,
 			"SELECT COUNT(*) FROM orders",
@@ -47,5 +40,6 @@ func GetMetricsHandler(db *database.DB) gin.HandlerFunc {
 			"total_revenue": totalRevenue,
 			"total_orders":  totalOrders,
 		})
+		logger.Info(logging.EventAdminMetricsRequested, "total_orders", totalOrders)
 	}
 }

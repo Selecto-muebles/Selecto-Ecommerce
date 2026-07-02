@@ -2,13 +2,16 @@ package handlers
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/utils"
+	"Selecto-Ecommerce/internal/shared/validation"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -16,22 +19,41 @@ import (
 )
 
 type RegisterInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
+	FirstName     string `json:"first_name"`
+	LastName      string `json:"last_name"`
+	DNI           string `json:"dni"`
+	StreetAddress string `json:"street_address"`
+	StreetNumber  string `json:"street_number"`
+	PostalCode    string `json:"postal_code"`
+	Province      string `json:"province"`
+	Locality      string `json:"locality"`
+	PhoneNumber   string `json:"phone_number"`
 }
 
-func RegisterHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
+func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_ = cfg
 		var input RegisterInput
 
 		if err := c.ShouldBindJSON(&input); err != nil {
+			logger.Warn(logging.EventUserRegistrationRejected, "reason", "invalid_payload")
 			apperrors.BadRequest(c, "invalid input")
 			return
 		}
 		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+		customerProfile := validation.NormalizeCustomerProfile(input.customerProfile())
+		input.applyCustomerProfile(customerProfile)
+
 		if input.Email == "" || !strings.Contains(input.Email, "@") || len(input.Password) < 8 {
+			logger.Warn(logging.EventUserRegistrationRejected, "reason", "invalid_credentials_policy")
 			apperrors.BadRequest(c, "email and password must be valid")
+			return
+		}
+		if err := customerProfile.Validate(); err != nil {
+			logger.Warn(logging.EventUserRegistrationRejected, "reason", "invalid_customer_profile")
+			apperrors.BadRequest(c, "customer billing and shipping information must be valid")
 			return
 		}
 
@@ -41,18 +63,42 @@ func RegisterHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// 👇 agregamos role por defecto
-		_, err = db.Pool.Exec(
+		var userID int
+		err = db.Pool.QueryRow(
 			c,
-			"INSERT INTO users (email, password, role) VALUES ($1, $2, $3)",
+			`INSERT INTO users (
+				email,
+				password,
+				role,
+				first_name,
+				last_name,
+				dni,
+				street_address,
+				street_number,
+				postal_code,
+				province,
+				locality,
+				phone_number
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			RETURNING id`,
 			input.Email,
 			string(hashedPassword),
 			"user",
-		)
+			input.FirstName,
+			input.LastName,
+			input.DNI,
+			input.StreetAddress,
+			input.StreetNumber,
+			input.PostalCode,
+			input.Province,
+			input.Locality,
+			input.PhoneNumber,
+		).Scan(&userID)
 
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				logger.Warn(logging.EventUserRegistrationRejected, "reason", "duplicate_user")
 				apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "user already exists", nil)
 				return
 			}
@@ -60,8 +106,35 @@ func RegisterHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		logger.Info(logging.EventUserRegistrationCompleted, "user_id", userID, "role", "user")
 		c.JSON(http.StatusOK, gin.H{"message": "user created"})
 	}
+}
+
+func (input RegisterInput) customerProfile() validation.CustomerProfile {
+	return validation.CustomerProfile{
+		FirstName:     input.FirstName,
+		LastName:      input.LastName,
+		DNI:           input.DNI,
+		StreetAddress: input.StreetAddress,
+		StreetNumber:  input.StreetNumber,
+		PostalCode:    input.PostalCode,
+		Province:      input.Province,
+		Locality:      input.Locality,
+		PhoneNumber:   input.PhoneNumber,
+	}
+}
+
+func (input *RegisterInput) applyCustomerProfile(profile validation.CustomerProfile) {
+	input.FirstName = profile.FirstName
+	input.LastName = profile.LastName
+	input.DNI = profile.DNI
+	input.StreetAddress = profile.StreetAddress
+	input.StreetNumber = profile.StreetNumber
+	input.PostalCode = profile.PostalCode
+	input.Province = profile.Province
+	input.Locality = profile.Locality
+	input.PhoneNumber = profile.PhoneNumber
 }
 
 type LoginInput struct {
@@ -69,11 +142,12 @@ type LoginInput struct {
 	Password string `json:"password"`
 }
 
-func LoginHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
+func LoginHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input LoginInput
 
 		if err := c.ShouldBindJSON(&input); err != nil {
+			logger.Warn(logging.EventUserLoginRejected, "reason", "invalid_payload")
 			apperrors.BadRequest(c, "invalid input")
 			return
 		}
@@ -81,20 +155,23 @@ func LoginHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
 
 		var storedPassword string
 		var role string
+		var userID int
 
 		err := db.Pool.QueryRow(
 			c,
-			"SELECT password, role FROM users WHERE email=$1",
+			"SELECT id, password, role FROM users WHERE email=$1",
 			input.Email,
-		).Scan(&storedPassword, &role)
+		).Scan(&userID, &storedPassword, &role)
 
 		if err != nil {
+			logger.Warn(logging.EventUserLoginRejected, "reason", "invalid_credentials")
 			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid credentials", nil)
 			return
 		}
 
 		err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(input.Password))
 		if err != nil {
+			logger.Warn(logging.EventUserLoginRejected, "reason", "invalid_credentials", "user_id", userID)
 			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid credentials", nil)
 			return
 		}
@@ -105,9 +182,10 @@ func LoginHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		logger.Info(logging.EventUserLoginCompleted, "user_id", userID, "role", role)
 		c.JSON(http.StatusOK, gin.H{
 			"token": token,
-			"role":  role, // 👈 útil para frontend/admin
+			"role":  role,
 		})
 	}
 }

@@ -1,9 +1,13 @@
-package money
+package money_test
 
-import "testing"
+import (
+	"testing"
+
+	"Selecto-Ecommerce/internal/shared/money"
+)
 
 func TestFromFloatRoundsToCents(t *testing.T) {
-	got, err := FromFloat(123.456)
+	got, err := money.FromFloat(123.456)
 	if err != nil {
 		t.Fatalf("FromFloat() error = %v", err)
 	}
@@ -13,13 +17,13 @@ func TestFromFloatRoundsToCents(t *testing.T) {
 }
 
 func TestDecimalString(t *testing.T) {
-	if got := Cents(12345).DecimalString(); got != "123.45" {
+	if got := money.Cents(12345).DecimalString(); got != "123.45" {
 		t.Fatalf("DecimalString() = %q, want 123.45", got)
 	}
 }
 
 func TestFromDecimalString(t *testing.T) {
-	got, err := FromDecimalString("1000.5")
+	got, err := money.FromDecimalString("1000.5")
 	if err != nil {
 		t.Fatalf("FromDecimalString() error = %v", err)
 	}

@@ -52,9 +52,3 @@ CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status_created_at ON orders(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
-
--- Prepared timeout query. Run it from the app with:
--- handlers.ReleaseExpiredPendingOrders(ctx, db, 15*time.Minute)
---
--- The function locks pending orders first, restores their reserved stock, and
--- marks them as cancelled in the same SQL transaction.

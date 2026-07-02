@@ -1,4 +1,4 @@
-package handlers
+package integration_test
 
 import (
 	"os"

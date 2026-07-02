@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
-	"log"
+	"log/slog"
+
+	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -11,20 +13,23 @@ type DB struct {
 	Pool *pgxpool.Pool
 }
 
-func NewPostgresPool(databaseURL string) *DB {
+func NewPostgresPool(databaseURL string, logger *slog.Logger) (*DB, error) {
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v", err)
+		logger.Error(logging.EventDatabaseConnectionFailed, "error", err)
+		return nil, err
 	}
 
 	err = pool.Ping(context.Background())
 	if err != nil {
-		log.Fatalf("Database not responding: %v", err)
+		pool.Close()
+		logger.Error(logging.EventDatabaseHealthCheckFailed, "error", err)
+		return nil, err
 	}
 
-	log.Println("✅ Connected to PostgreSQL")
+	logger.Info(logging.EventDatabaseConnected)
 
 	return &DB{
 		Pool: pool,
-	}
+	}, nil
 }
