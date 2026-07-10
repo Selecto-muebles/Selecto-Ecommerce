@@ -19,6 +19,8 @@ const (
 	EventAdminAccessRejected             = "admin_access_rejected"
 	EventStockReserved                   = "stock_reserved"
 	EventOrderCreated                    = "order_created"
+	EventAdminOrderCancellationFailed    = "admin_order_cancellation_failed"
+	EventAdminOrderCancellationCompleted = "admin_order_cancellation_completed"
 	EventCheckoutRejected                = "checkout_rejected"
 	EventCheckoutStarted                 = "checkout_started"
 	EventCheckoutPreferenceReused        = "checkout_preference_reused"

@@ -316,17 +316,27 @@ func applyOrderStockItems(ctx context.Context, tx pgx.Tx, orderID int, apply fun
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 
+	items := make([]orderStockItem, 0)
 	for rows.Next() {
 		var current orderStockItem
 		if err := rows.Scan(&current.productID, &current.quantity); err != nil {
+			rows.Close()
 			return err
 		}
+		items = append(items, current)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, current := range items {
 		if err := apply(current); err != nil {
 			return err
 		}
 	}
 
-	return rows.Err()
+	return nil
 }
