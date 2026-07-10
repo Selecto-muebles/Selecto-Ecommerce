@@ -615,12 +615,16 @@ func AdminCancelOrderHandler(db *database.DB, logger *slog.Logger) gin.HandlerFu
 		}
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
+			logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "begin_transaction", "order_id", id, "error", err)
 			apperrors.Internal(c)
 			return
 		}
 		defer tx.Rollback(c)
 		var status string
 		if err := tx.QueryRow(c, "SELECT status FROM orders WHERE id=$1 FOR UPDATE", id).Scan(&status); err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "lock_order", "order_id", id, "error", err)
+			}
 			handleAdminLookupErr(c, err, "order not found")
 			return
 		}
@@ -629,23 +633,32 @@ func AdminCancelOrderHandler(db *database.DB, logger *slog.Logger) gin.HandlerFu
 			return
 		}
 		if err := restoreOrderStock(c, tx, id); err != nil {
+			logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "restore_stock", "order_id", id, "error", err)
 			apperrors.Internal(c)
 			return
 		}
 		if _, err := tx.Exec(c, "UPDATE orders SET status='cancelled', payment_status=COALESCE(payment_status, 'cancelled'), cancelled_at=NOW() WHERE id=$1", id); err != nil {
+			logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "update_order", "order_id", id, "error", err)
 			apperrors.Internal(c)
 			return
 		}
 		if err := writeAuditTx(c, tx, adminActor(c), "order_cancelled", "order", id, gin.H{"previous_status": status}); err != nil {
+			logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "write_audit", "order_id", id, "error", err)
 			apperrors.Internal(c)
 			return
 		}
 		if err := tx.Commit(c); err != nil {
+			logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "commit_transaction", "order_id", id, "error", err)
 			apperrors.Internal(c)
 			return
 		}
-		logger.Info(logging.EventExpiredOrderReleaseCompleted, "event", "order_cancelled", "order_id", id)
-		order, _ := adminOrderDetail(c, db, id)
+		logger.Info(logging.EventAdminOrderCancellationCompleted, "order_id", id)
+		order, err := adminOrderDetail(c, db, id)
+		if err != nil {
+			logger.Error(logging.EventAdminOrderCancellationFailed, "stage", "load_response", "order_id", id, "error", err)
+			apperrors.Internal(c)
+			return
+		}
 		c.JSON(http.StatusOK, order)
 	}
 }
