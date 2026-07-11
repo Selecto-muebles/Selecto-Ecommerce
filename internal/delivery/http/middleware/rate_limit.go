@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -43,9 +44,18 @@ func RateLimit(limitPerMinute int) gin.HandlerFunc {
 		bucket.count++
 		buckets[key] = bucket
 		allowed := bucket.count <= limitPerMinute
+		remaining := limitPerMinute - bucket.count
+		if remaining < 0 {
+			remaining = 0
+		}
+		resetAt := bucket.windowStart.Add(window)
 		mu.Unlock()
+		c.Header("X-RateLimit-Limit", strconv.Itoa(limitPerMinute))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
+		c.Header("X-RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
 
 		if !allowed {
+			c.Header("Retry-After", strconv.Itoa(max(1, int(time.Until(resetAt).Seconds()))))
 			apperrors.JSON(c, http.StatusTooManyRequests, apperrors.CodeRateLimited, "too many requests", nil)
 			c.Abort()
 			return

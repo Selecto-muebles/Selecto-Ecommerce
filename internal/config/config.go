@@ -70,8 +70,11 @@ func (c *Config) Validate() error {
 		if c.PaymentsServiceURL == "" {
 			return errors.New("PAYMENTS_SERVICE_URL is required in production")
 		}
-		if c.InternalWebhookSecret == "" {
-			return errors.New("INTERNAL_WEBHOOK_SECRET is required in production")
+		if len(c.InternalWebhookSecret) < 32 {
+			return errors.New("INTERNAL_WEBHOOK_SECRET must be at least 32 characters in production")
+		}
+		if c.JWTTTL > 24*time.Hour {
+			return errors.New("JWT_TTL cannot exceed 24 hours in production")
 		}
 		if allowsAllOrigins(c.CORSAllowedOrigins) {
 			return errors.New("CORS_ALLOWED_ORIGINS cannot allow all origins in production")

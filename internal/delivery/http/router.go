@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,14 +17,28 @@ import (
 )
 
 func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.Engine {
-	r := gin.Default()
+	if cfg.AppEnv == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	r := gin.New()
+	r.Use(gin.Recovery())
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 	r.Use(middleware.RequestContext(logger))
+	r.Use(middleware.SecurityHeaders(cfg.AppEnv))
 	r.Use(middleware.RateLimit(cfg.RateLimitPerMinute))
 	r.Use(cors.New(corsConfig(cfg)))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	r.GET("/ready", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Pool.Ping(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
 
 	r.POST("/register", handlers.RegisterHandler(db, cfg, logger))
@@ -100,18 +115,23 @@ func corsConfig(cfg *config.Config) cors.Config {
 	return corsCfg
 }
 
-func StartExpiredOrderWorker(db *database.DB, cfg *config.Config, logger *slog.Logger) {
+func StartExpiredOrderWorker(ctx context.Context, db *database.DB, cfg *config.Config, logger *slog.Logger) {
 	go func() {
 		ticker := time.NewTicker(cfg.ReleaseWorkerInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			released, err := handlers.ReleaseExpiredPendingOrdersWithAudit(db, cfg.OrderPendingTTL)
-			if err != nil {
-				logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
-				continue
-			}
-			if released > 0 {
-				logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", released)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				released, err := handlers.ReleaseExpiredPendingOrdersWithAudit(db, cfg.OrderPendingTTL)
+				if err != nil {
+					logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
+					continue
+				}
+				if released > 0 {
+					logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", released)
+				}
 			}
 		}
 	}()
