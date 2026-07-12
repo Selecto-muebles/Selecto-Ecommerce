@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    strategy:
+      matrix:
+        go: ['1.25.x']
+        postgres: ['17', '18']
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_DB: selecto_test
+          POSTGRES_USER: selecto
+          POSTGRES_PASSWORD: selecto_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U selecto -d selecto_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://selecto:selecto_test@localhost:5432/selecto_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql
+      - run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql
+      - name: Verify gofmt
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            printf 'Files requiring gofmt:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecommerce-coverage-pg${{ matrix.postgres }}
+          path: coverage.out
+          retention-days: 14
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: selecto-ecommerce:${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
