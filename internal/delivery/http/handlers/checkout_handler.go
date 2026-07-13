@@ -28,6 +28,16 @@ type CheckoutRequest struct {
 }
 
 func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+	client := &http.Client{
+		Timeout: cfg.PaymentsRequestTimeout,
+		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:   true,
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
 	return func(c *gin.Context) {
 		var input CheckoutRequest
 
@@ -105,7 +115,6 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			"amount":   total.Float64(),
 		})
 
-		client := &http.Client{Timeout: 10 * time.Second}
 		req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, cfg.PaymentsServiceURL+"/create-preference", bytes.NewBuffer(payload))
 		if err != nil {
 			apperrors.Internal(c)
