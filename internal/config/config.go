@@ -13,34 +13,36 @@ import (
 )
 
 type Config struct {
-	Port                  string
-	AppEnv                string
-	DatabaseURL           string
-	PaymentsServiceURL    string
-	JWTSecret             string
-	JWTTTL                time.Duration
-	InternalWebhookSecret string
-	CORSAllowedOrigins    []string
-	RateLimitPerMinute    int
-	OrderPendingTTL       time.Duration
-	ReleaseWorkerInterval time.Duration
+	Port                   string
+	AppEnv                 string
+	DatabaseURL            string
+	PaymentsServiceURL     string
+	JWTSecret              string
+	JWTTTL                 time.Duration
+	InternalWebhookSecret  string
+	CORSAllowedOrigins     []string
+	RateLimitPerMinute     int
+	OrderPendingTTL        time.Duration
+	ReleaseWorkerInterval  time.Duration
+	PaymentsRequestTimeout time.Duration
 }
 
 func LoadConfig() *Config {
 	_ = godotenv.Load()
 
 	return &Config{
-		Port:                  getEnv("PORT", "8080"),
-		AppEnv:                getEnv("APP_ENV", "development"),
-		DatabaseURL:           getEnv("DATABASE_URL", ""),
-		PaymentsServiceURL:    strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
-		JWTSecret:             getEnv("JWT_SECRET", ""),
-		JWTTTL:                getDurationEnv("JWT_TTL", 72*time.Hour),
-		InternalWebhookSecret: getEnv("INTERNAL_WEBHOOK_SECRET", ""),
-		CORSAllowedOrigins:    splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
-		RateLimitPerMinute:    getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
-		OrderPendingTTL:       getDurationEnv("ORDER_PENDING_TTL", 15*time.Minute),
-		ReleaseWorkerInterval: getDurationEnv("RELEASE_WORKER_INTERVAL", time.Minute),
+		Port:                   getEnv("PORT", "8080"),
+		AppEnv:                 getEnv("APP_ENV", "development"),
+		DatabaseURL:            getEnv("DATABASE_URL", ""),
+		PaymentsServiceURL:     strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
+		JWTSecret:              getEnv("JWT_SECRET", ""),
+		JWTTTL:                 getDurationEnv("JWT_TTL", 72*time.Hour),
+		InternalWebhookSecret:  getEnv("INTERNAL_WEBHOOK_SECRET", ""),
+		CORSAllowedOrigins:     splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
+		RateLimitPerMinute:     getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
+		OrderPendingTTL:        getDurationEnv("ORDER_PENDING_TTL", 15*time.Minute),
+		ReleaseWorkerInterval:  getDurationEnv("RELEASE_WORKER_INTERVAL", time.Minute),
+		PaymentsRequestTimeout: getDurationEnv("PAYMENTS_REQUEST_TIMEOUT", 27*time.Second),
 	}
 }
 
@@ -62,6 +64,9 @@ func (c *Config) Validate() error {
 	}
 	if c.ReleaseWorkerInterval <= 0 {
 		return errors.New("RELEASE_WORKER_INTERVAL must be positive")
+	}
+	if c.PaymentsRequestTimeout <= 0 || c.PaymentsRequestTimeout >= 30*time.Second {
+		return errors.New("PAYMENTS_REQUEST_TIMEOUT must be positive and lower than 30s")
 	}
 	if c.RateLimitPerMinute <= 0 {
 		return errors.New("RATE_LIMIT_PER_MINUTE must be positive")
