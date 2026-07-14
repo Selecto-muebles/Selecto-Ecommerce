@@ -34,6 +34,7 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: true
+      - run: go mod verify
       - run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql
       - run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql
       - name: Verify gofmt

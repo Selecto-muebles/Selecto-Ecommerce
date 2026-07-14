@@ -25,6 +25,7 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 	r.Use(middleware.RequestContext(logger))
 	r.Use(middleware.SecurityHeaders(cfg.AppEnv))
+	r.Use(middleware.RequestBodyLimit(1 << 20))
 	r.Use(middleware.RateLimit(cfg.RateLimitPerMinute))
 	r.Use(cors.New(corsConfig(cfg)))
 
@@ -47,7 +48,7 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, logger))
 
 	authorized := r.Group("/")
-	authorized.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	authorized.Use(middleware.AuthMiddleware(db, cfg.JWTSecret))
 
 	authorized.GET("/me", func(c *gin.Context) {
 		email, _ := c.Get("email")

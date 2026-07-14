@@ -1,16 +1,19 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
+	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 )
 
-func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
+func AuthMiddleware(db *database.DB, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 
@@ -36,8 +39,19 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
+		var currentRole string
+		if err := db.Pool.QueryRow(c, "SELECT role FROM users WHERE email=$1", claims.Email).Scan(&currentRole); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid token", nil)
+			} else {
+				apperrors.Internal(c)
+			}
+			c.Abort()
+			return
+		}
+
 		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
+		c.Set("role", currentRole)
 
 		c.Next()
 	}

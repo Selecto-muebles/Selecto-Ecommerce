@@ -32,6 +32,8 @@ type RegisterInput struct {
 	PhoneNumber   string `json:"phone_number"`
 }
 
+const maxBcryptPasswordBytes = 72
+
 func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_ = cfg
@@ -46,7 +48,7 @@ func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 		customerProfile := validation.NormalizeCustomerProfile(input.customerProfile())
 		input.applyCustomerProfile(customerProfile)
 
-		if input.Email == "" || !strings.Contains(input.Email, "@") || len(input.Password) < 8 {
+		if input.Email == "" || !strings.Contains(input.Email, "@") || len(input.Password) < 8 || len(input.Password) > maxBcryptPasswordBytes {
 			logger.Warn(logging.EventUserRegistrationRejected, "reason", "invalid_credentials_policy")
 			apperrors.BadRequest(c, "email and password must be valid")
 			return
