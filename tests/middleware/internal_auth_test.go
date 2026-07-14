@@ -81,17 +81,38 @@ func TestInternalWebhookAuthRejectsInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestInternalWebhookAuthRejectsExpiredAndFutureTimestamps(t *testing.T) {
+	for _, timestamp := range []string{
+		strconv.FormatInt(time.Now().Add(-2*time.Minute).Unix(), 10),
+		strconv.FormatInt(time.Now().Add(2*time.Minute).Unix(), 10),
+	} {
+		resp := performInternalWebhookAuthRequestAt(t, timestamp, authRequest{
+			setHeaders: func(req *http.Request, secret string, timestamp string, body []byte) {
+				req.Header.Set(serviceTimestampHeader, timestamp)
+				req.Header.Set(serviceSignatureHeader, internalSignature(secret, timestamp, body))
+			},
+		})
+		if resp.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", resp.Code, http.StatusUnauthorized)
+		}
+	}
+}
+
 type authRequest struct {
 	setHeaders func(req *http.Request, secret string, timestamp string, body []byte)
 }
 
 func performInternalWebhookAuthRequest(t *testing.T, request authRequest) *httptest.ResponseRecorder {
 	t.Helper()
+	return performInternalWebhookAuthRequestAt(t, strconv.FormatInt(time.Now().Unix(), 10), request)
+}
+
+func performInternalWebhookAuthRequestAt(t *testing.T, timestamp string, request authRequest) *httptest.ResponseRecorder {
+	t.Helper()
 
 	gin.SetMode(gin.TestMode)
 	secret := "internal-secret"
 	body := []byte(`{"payment_id":1}`)
-	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	router := gin.New()
 	router.POST("/payments/webhook", middleware.InternalWebhookAuth(secret, time.Minute), func(c *gin.Context) {

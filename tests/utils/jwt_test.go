@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"Selecto-Ecommerce/internal/shared/utils"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestGenerateAndValidateToken(t *testing.T) {
@@ -21,6 +23,31 @@ func TestGenerateAndValidateToken(t *testing.T) {
 	}
 	if claims.Email != "admin@example.com" || claims.Role != "admin" {
 		t.Fatalf("claims = %+v", claims)
+	}
+}
+
+func TestValidateTokenRejectsExpiredToken(t *testing.T) {
+	token, err := utils.GenerateToken("user@example.com", "user", "01234567890123456789012345678901", -time.Second)
+	if err != nil {
+		t.Fatalf("GenerateToken() error = %v", err)
+	}
+	if _, err := utils.ValidateToken(token, "01234567890123456789012345678901"); err == nil {
+		t.Fatal("ValidateToken() error = nil, want expired token error")
+	}
+}
+
+func TestValidateTokenRejectsNoneAlgorithm(t *testing.T) {
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{
+		"email": "user@example.com",
+		"role":  "user",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+	tokenString, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatalf("SignedString() error = %v", err)
+	}
+	if _, err := utils.ValidateToken(tokenString, "01234567890123456789012345678901"); err == nil {
+		t.Fatal("ValidateToken() error = nil, want signing method error")
 	}
 }
 
