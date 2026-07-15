@@ -34,7 +34,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := database.NewPostgresPool(cfg.DatabaseURL, logger)
+	db, err := database.NewPostgresPool(cfg.DatabaseURL, database.PoolConfig{
+		MaxConns:        int32(cfg.DatabaseMaxConns),
+		MinConns:        int32(cfg.DatabaseMinConns),
+		MaxConnLifetime: cfg.DatabaseMaxConnLifetime,
+		MaxConnIdleTime: cfg.DatabaseMaxConnIdleTime,
+	}, logger)
 	if err != nil {
 		os.Exit(1)
 	}

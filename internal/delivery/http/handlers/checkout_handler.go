@@ -66,10 +66,7 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			 FROM orders o
 			 JOIN users u ON u.id = o.user_id
 			 WHERE o.id=$1 AND u.email=$2
-			   AND (
-			     COALESCE(o.expires_at, o.created_at + make_interval(secs => $3)) > NOW()
-			     OR o.active_payment_preference_id IS NOT NULL
-			   )`,
+			   AND COALESCE(o.expires_at, o.created_at + make_interval(secs => $3)) > NOW()`,
 			orderID,
 			email,
 			int(cfg.OrderPendingTTL.Seconds()),
@@ -155,13 +152,18 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			`UPDATE orders
 			 SET active_payment_preference_id=$1,
 			     active_checkout_url=$2,
-			     active_payment_environment=$3
-			 WHERE id=$4 AND status=$5 AND active_payment_preference_id IS NULL`,
+			     active_payment_environment=$3,
+			     expires_at=NOW() + make_interval(secs => $6)
+			 WHERE id=$4
+			   AND status=$5
+			   AND active_payment_preference_id IS NULL
+			   AND COALESCE(expires_at, created_at + make_interval(secs => $6)) > NOW()`,
 			preferenceID,
 			checkoutURL,
 			environment,
 			orderID,
 			domain.OrderStatusPending,
+			int(cfg.OrderPendingTTL.Seconds()),
 		)
 		if err != nil {
 			apperrors.Internal(c)
