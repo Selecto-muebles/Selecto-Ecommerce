@@ -13,36 +13,48 @@ import (
 )
 
 type Config struct {
-	Port                   string
-	AppEnv                 string
-	DatabaseURL            string
-	PaymentsServiceURL     string
-	JWTSecret              string
-	JWTTTL                 time.Duration
-	InternalWebhookSecret  string
-	CORSAllowedOrigins     []string
-	RateLimitPerMinute     int
-	OrderPendingTTL        time.Duration
-	ReleaseWorkerInterval  time.Duration
-	PaymentsRequestTimeout time.Duration
+	Port                    string
+	AppEnv                  string
+	DatabaseURL             string
+	PaymentsServiceURL      string
+	JWTSecret               string
+	JWTTTL                  time.Duration
+	InternalWebhookSecret   string
+	CORSAllowedOrigins      []string
+	RateLimitPerMinute      int
+	OrderPendingTTL         time.Duration
+	ReleaseWorkerInterval   time.Duration
+	PaymentsRequestTimeout  time.Duration
+	DatabaseMaxConns        int
+	DatabaseMinConns        int
+	DatabaseMaxConnLifetime time.Duration
+	DatabaseMaxConnIdleTime time.Duration
+	ReleaseWorkerBatchSize  int
+	ReleaseWorkerMaxBatches int
 }
 
 func LoadConfig() *Config {
 	_ = godotenv.Load()
 
 	return &Config{
-		Port:                   getEnv("PORT", "8080"),
-		AppEnv:                 getEnv("APP_ENV", "development"),
-		DatabaseURL:            getEnv("DATABASE_URL", ""),
-		PaymentsServiceURL:     strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
-		JWTSecret:              getEnv("JWT_SECRET", ""),
-		JWTTTL:                 getDurationEnv("JWT_TTL", 72*time.Hour),
-		InternalWebhookSecret:  getEnv("INTERNAL_WEBHOOK_SECRET", ""),
-		CORSAllowedOrigins:     splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
-		RateLimitPerMinute:     getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
-		OrderPendingTTL:        getDurationEnv("ORDER_PENDING_TTL", 15*time.Minute),
-		ReleaseWorkerInterval:  getDurationEnv("RELEASE_WORKER_INTERVAL", time.Minute),
-		PaymentsRequestTimeout: getDurationEnv("PAYMENTS_REQUEST_TIMEOUT", 27*time.Second),
+		Port:                    getEnv("PORT", "8080"),
+		AppEnv:                  getEnv("APP_ENV", "development"),
+		DatabaseURL:             getEnv("DATABASE_URL", ""),
+		PaymentsServiceURL:      strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
+		JWTSecret:               getEnv("JWT_SECRET", ""),
+		JWTTTL:                  getDurationEnv("JWT_TTL", 72*time.Hour),
+		InternalWebhookSecret:   getEnv("INTERNAL_WEBHOOK_SECRET", ""),
+		CORSAllowedOrigins:      splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
+		RateLimitPerMinute:      getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
+		OrderPendingTTL:         getDurationEnv("ORDER_PENDING_TTL", 15*time.Minute),
+		ReleaseWorkerInterval:   getDurationEnv("RELEASE_WORKER_INTERVAL", time.Minute),
+		PaymentsRequestTimeout:  getDurationEnv("PAYMENTS_REQUEST_TIMEOUT", 27*time.Second),
+		DatabaseMaxConns:        getIntEnv("DB_MAX_CONNS", 20),
+		DatabaseMinConns:        getIntEnv("DB_MIN_CONNS", 2),
+		DatabaseMaxConnLifetime: getDurationEnv("DB_MAX_CONN_LIFETIME", 30*time.Minute),
+		DatabaseMaxConnIdleTime: getDurationEnv("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
+		ReleaseWorkerBatchSize:  getIntEnv("RELEASE_WORKER_BATCH_SIZE", 100),
+		ReleaseWorkerMaxBatches: getIntEnv("RELEASE_WORKER_MAX_BATCHES", 10),
 	}
 }
 
@@ -70,6 +82,21 @@ func (c *Config) Validate() error {
 	}
 	if c.RateLimitPerMinute <= 0 {
 		return errors.New("RATE_LIMIT_PER_MINUTE must be positive")
+	}
+	if c.DatabaseMaxConns <= 0 || c.DatabaseMaxConns > 200 {
+		return errors.New("DB_MAX_CONNS must be between 1 and 200")
+	}
+	if c.DatabaseMinConns < 0 || c.DatabaseMinConns > c.DatabaseMaxConns {
+		return errors.New("DB_MIN_CONNS must be between 0 and DB_MAX_CONNS")
+	}
+	if c.DatabaseMaxConnLifetime <= 0 || c.DatabaseMaxConnIdleTime <= 0 {
+		return errors.New("database connection lifetimes must be positive")
+	}
+	if c.ReleaseWorkerBatchSize <= 0 || c.ReleaseWorkerBatchSize > 1000 {
+		return errors.New("RELEASE_WORKER_BATCH_SIZE must be between 1 and 1000")
+	}
+	if c.ReleaseWorkerMaxBatches <= 0 || c.ReleaseWorkerMaxBatches > 100 {
+		return errors.New("RELEASE_WORKER_MAX_BATCHES must be between 1 and 100")
 	}
 	if c.AppEnv == "production" {
 		if c.PaymentsServiceURL == "" {

@@ -347,14 +347,14 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 }
 
 func ReleaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan time.Duration) (int64, error) {
-	return releaseExpiredPendingOrders(ctx, db, olderThan, false)
+	return releaseExpiredPendingOrders(ctx, db, olderThan, 100, false)
 }
 
-func ReleaseExpiredPendingOrdersWithAudit(db *database.DB, olderThan time.Duration) (int64, error) {
-	return releaseExpiredPendingOrders(context.Background(), db, olderThan, true)
+func ReleaseExpiredPendingOrdersWithAudit(ctx context.Context, db *database.DB, olderThan time.Duration, batchSize int) (int64, error) {
+	return releaseExpiredPendingOrders(ctx, db, olderThan, batchSize, true)
 }
 
-func releaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan time.Duration, writeAudit bool) (int64, error) {
+func releaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan time.Duration, batchSize int, writeAudit bool) (int64, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -366,10 +366,12 @@ func releaseExpiredPendingOrders(ctx context.Context, db *database.DB, olderThan
 		`SELECT id
 		 FROM orders
 		 WHERE status='pending'
-		   AND active_payment_preference_id IS NULL
 		   AND COALESCE(expires_at, created_at + make_interval(secs => $1)) < NOW()
-		 FOR UPDATE`,
+		 ORDER BY COALESCE(expires_at, created_at + make_interval(secs => $1)), id
+		 LIMIT $2
+		 FOR UPDATE SKIP LOCKED`,
 		int(olderThan.Seconds()),
+		batchSize,
 	)
 	if err != nil {
 		return 0, err

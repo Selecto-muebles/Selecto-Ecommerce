@@ -3,15 +3,18 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
+	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/utils"
 
@@ -146,6 +149,103 @@ func TestPaymentWebhookContractIsIdempotent(t *testing.T) {
 	}
 	if events != 1 || audits != 1 {
 		t.Fatalf("events/audits = %d/%d, want 1/1", events, audits)
+	}
+}
+
+func TestExpiredOrderWithActivePreferenceReleasesStockOnceAcrossWorkers(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	userID, productID, orderID := seedPendingOrder(t, pool, 5, 2)
+	t.Cleanup(func() { cleanupOrderFixture(ctx, pool, orderID, productID, userID) })
+	if _, err := pool.Exec(ctx, "UPDATE orders SET expires_at=NOW()-INTERVAL '1 minute', active_payment_preference_id='expired-pref' WHERE id=$1", orderID); err != nil {
+		t.Fatalf("expire order: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan int64, 2)
+	errors := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			released, err := ReleaseExpiredPendingOrdersWithAudit(ctx, &database.DB{Pool: pool}, 15*time.Minute, 10)
+			results <- released
+			errors <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errors)
+	var total int64
+	for released := range results {
+		total += released
+	}
+	for err := range errors {
+		if err != nil {
+			t.Fatalf("release worker error: %v", err)
+		}
+	}
+	if total != 1 {
+		t.Fatalf("released orders = %d, want 1", total)
+	}
+
+	var status string
+	var stock, audits int
+	if err := pool.QueryRow(ctx, "SELECT status FROM orders WHERE id=$1", orderID).Scan(&status); err != nil {
+		t.Fatalf("read order status: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT stock FROM products WHERE id=$1", productID).Scan(&stock); err != nil {
+		t.Fatalf("read product stock: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM audit_logs WHERE entity_type='order' AND entity_id=$1 AND action='order_reservation_expired'", orderID).Scan(&audits); err != nil {
+		t.Fatalf("count expiration audits: %v", err)
+	}
+	if status != "cancelled" || stock != 7 || audits != 1 {
+		t.Fatalf("status/stock/audits = %s/%d/%d, want cancelled/7/1", status, stock, audits)
+	}
+}
+
+func TestCheckoutCannotReactivateOrderThatExpiresDuringPreferenceCreation(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	userID, productID, orderID := seedPendingOrder(t, pool, 5, 1)
+	t.Cleanup(func() { cleanupOrderFixture(ctx, pool, orderID, productID, userID) })
+	var email string
+	if err := pool.QueryRow(ctx, "SELECT email FROM users WHERE id=$1", userID).Scan(&email); err != nil {
+		t.Fatalf("read user email: %v", err)
+	}
+
+	payments := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if _, err := pool.Exec(request.Context(), "UPDATE orders SET expires_at=NOW()-INTERVAL '1 minute' WHERE id=$1", orderID); err != nil {
+			t.Errorf("expire order during checkout: %v", err)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		response.WriteHeader(http.StatusCreated)
+		_, _ = response.Write([]byte(`{"preference_id":"late-pref","checkout_url":"https://checkout.example/late","environment":"test"}`))
+	}))
+	t.Cleanup(payments.Close)
+
+	handler := CheckoutHandler(&database.DB{Pool: pool}, &config.Config{
+		PaymentsServiceURL:     payments.URL,
+		PaymentsRequestTimeout: 2 * time.Second,
+		OrderPendingTTL:        15 * time.Minute,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/checkout", bytes.NewBufferString(fmt.Sprintf(`{"order_id":%q}`, utils.EncodeID(orderID))))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("email", email)
+	handler(c)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("checkout status = %d body=%s, want conflict", recorder.Code, recorder.Body.String())
+	}
+	var preferenceID sql.NullString
+	if err := pool.QueryRow(ctx, "SELECT active_payment_preference_id FROM orders WHERE id=$1", orderID).Scan(&preferenceID); err != nil {
+		t.Fatalf("read order preference: %v", err)
+	}
+	if preferenceID.Valid {
+		t.Fatalf("active preference = %q, want null", preferenceID.String)
 	}
 }
 

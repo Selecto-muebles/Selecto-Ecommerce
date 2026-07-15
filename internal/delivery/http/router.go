@@ -118,6 +118,24 @@ func corsConfig(cfg *config.Config) cors.Config {
 
 func StartExpiredOrderWorker(ctx context.Context, db *database.DB, cfg *config.Config, logger *slog.Logger) {
 	go func() {
+		process := func() {
+			var totalReleased int64
+			for batch := 0; batch < cfg.ReleaseWorkerMaxBatches; batch++ {
+				released, err := handlers.ReleaseExpiredPendingOrdersWithAudit(ctx, db, cfg.OrderPendingTTL, cfg.ReleaseWorkerBatchSize)
+				if err != nil {
+					logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
+					return
+				}
+				totalReleased += released
+				if released < int64(cfg.ReleaseWorkerBatchSize) {
+					break
+				}
+			}
+			if totalReleased > 0 {
+				logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", totalReleased)
+			}
+		}
+		process()
 		ticker := time.NewTicker(cfg.ReleaseWorkerInterval)
 		defer ticker.Stop()
 		for {
@@ -125,14 +143,7 @@ func StartExpiredOrderWorker(ctx context.Context, db *database.DB, cfg *config.C
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				released, err := handlers.ReleaseExpiredPendingOrdersWithAudit(db, cfg.OrderPendingTTL)
-				if err != nil {
-					logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
-					continue
-				}
-				if released > 0 {
-					logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", released)
-				}
+				process()
 			}
 		}
 	}()

@@ -156,34 +156,40 @@ func GetAdminDashboardHandler(db *database.DB, logger *slog.Logger) gin.HandlerF
 		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 		var salesToday, salesMonth float64
 		var ordersPending, ordersPaid, ordersCancelled, productsActive, productsWithoutStock int
-		checks := []func() error{
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='paid' AND COALESCE(paid_at, created_at) >= $1 AND COALESCE(paid_at, created_at) < $2", dayStart, now).Scan(&salesToday)
-			},
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='paid' AND COALESCE(paid_at, created_at) >= $1 AND COALESCE(paid_at, created_at) < $2", monthStart, now).Scan(&salesMonth)
-			},
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COUNT(*) FROM orders WHERE status='pending'").Scan(&ordersPending)
-			},
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COUNT(*) FROM orders WHERE status='paid'").Scan(&ordersPaid)
-			},
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COUNT(*) FROM orders WHERE status='cancelled'").Scan(&ordersCancelled)
-			},
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COUNT(*) FROM products WHERE active=TRUE").Scan(&productsActive)
-			},
-			func() error {
-				return db.Pool.QueryRow(c, "SELECT COUNT(*) FROM products WHERE active=TRUE AND stock=0").Scan(&productsWithoutStock)
-			},
-		}
-		for _, check := range checks {
-			if err := check(); err != nil {
-				apperrors.Internal(c)
-				return
-			}
+		err := db.Pool.QueryRow(c, `
+			WITH sales AS (
+				SELECT
+					COALESCE(SUM(total) FILTER (WHERE COALESCE(paid_at, created_at) >= $1), 0) AS today,
+					COALESCE(SUM(total), 0) AS month
+				FROM orders
+				WHERE status='paid'
+				  AND COALESCE(paid_at, created_at) >= $2
+				  AND COALESCE(paid_at, created_at) < $3
+			), order_counts AS (
+				SELECT
+				COUNT(*) FILTER (WHERE status='pending'),
+				COUNT(*) FILTER (WHERE status='paid'),
+					COUNT(*) FILTER (WHERE status='cancelled')
+				FROM orders
+			), product_counts AS (
+				SELECT
+					COUNT(*) FILTER (WHERE active),
+					COUNT(*) FILTER (WHERE active AND stock=0)
+				FROM products
+			)
+			SELECT sales.*, order_counts.*, product_counts.*
+			FROM sales, order_counts, product_counts`, dayStart, monthStart, now).Scan(
+			&salesToday,
+			&salesMonth,
+			&ordersPending,
+			&ordersPaid,
+			&ordersCancelled,
+			&productsActive,
+			&productsWithoutStock,
+		)
+		if err != nil {
+			apperrors.Internal(c)
+			return
 		}
 		latestOrders, err := adminLatestOrders(c, db, 10)
 		if err != nil {
