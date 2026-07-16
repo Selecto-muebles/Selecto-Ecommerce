@@ -37,11 +37,14 @@ const (
 type adminPage struct{ Page, PageSize, Offset int }
 
 type adminProductInput struct {
-	Name   string   `json:"name"`
-	SKU    string   `json:"sku"`
-	Price  *float64 `json:"price"`
-	Stock  *int     `json:"stock"`
-	Active *bool    `json:"active"`
+	Name        string           `json:"name"`
+	SKU         string           `json:"sku"`
+	Price       *float64         `json:"price"`
+	Stock       *int             `json:"stock"`
+	Active      *bool            `json:"active"`
+	Description *string          `json:"description"`
+	Category    *string          `json:"category"`
+	Options     *[]productOption `json:"options"`
 }
 
 func adminPagination(c *gin.Context) adminPage {
@@ -247,7 +250,7 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		args = append(args, page.PageSize, page.Offset)
-		rows, err := db.Pool.Query(c, "SELECT id, name, COALESCE(sku, ''), price, stock, active, created_at, updated_at FROM products WHERE "+whereSQL+" ORDER BY "+productSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
+		rows, err := db.Pool.Query(c, "SELECT id, name, COALESCE(sku, ''), price, stock, active, description, category, created_at, updated_at FROM products WHERE "+whereSQL+" ORDER BY "+productSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -256,15 +259,15 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 		items := []gin.H{}
 		for rows.Next() {
 			var id, stockValue int
-			var name, sku string
+			var name, sku, description, category string
 			var price float64
 			var activeValue bool
 			var createdAt, updatedAt time.Time
-			if err := rows.Scan(&id, &name, &sku, &price, &stockValue, &activeValue, &createdAt, &updatedAt); err != nil {
+			if err := rows.Scan(&id, &name, &sku, &price, &stockValue, &activeValue, &description, &category, &createdAt, &updatedAt); err != nil {
 				apperrors.Internal(c)
 				return
 			}
-			items = append(items, gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stockValue, "active": activeValue, "created_at": createdAt, "updated_at": updatedAt})
+			items = append(items, gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stockValue, "active": activeValue, "description": description, "category": category, "created_at": createdAt, "updated_at": updatedAt})
 		}
 		if err := rows.Err(); err != nil {
 			apperrors.Internal(c)
@@ -305,16 +308,24 @@ func AdminGetProductHandler(db *database.DB) gin.HandlerFunc {
 }
 
 func adminProduct(ctx context.Context, db *database.DB, id int) (gin.H, error) {
-	var name, sku string
+	var name, sku, description, category string
 	var price float64
 	var stock int
 	var active bool
 	var createdAt, updatedAt time.Time
-	err := db.Pool.QueryRow(ctx, "SELECT name, COALESCE(sku, ''), price, stock, active, created_at, updated_at FROM products WHERE id=$1", id).Scan(&name, &sku, &price, &stock, &active, &createdAt, &updatedAt)
+	err := db.Pool.QueryRow(ctx, "SELECT name, COALESCE(sku, ''), price, stock, active, description, category, created_at, updated_at FROM products WHERE id=$1", id).Scan(&name, &sku, &price, &stock, &active, &description, &category, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "created_at": createdAt, "updated_at": updatedAt}, nil
+	images, err := productImages(ctx, db, id)
+	if err != nil {
+		return nil, err
+	}
+	options, err := productOptions(ctx, db, id)
+	if err != nil {
+		return nil, err
+	}
+	return gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "images": images, "options": options, "created_at": createdAt, "updated_at": updatedAt}, nil
 }
 
 func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
@@ -332,9 +343,39 @@ func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 		if input.Active != nil {
 			active = *input.Active
 		}
-		var id int
-		err := db.Pool.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active).Scan(&id)
+		options := []productOption{}
+		if input.Options != nil {
+			var err error
+			options, err = normalizeProductOptions(*input.Options)
+			if err != nil {
+				apperrors.BadRequest(c, err.Error())
+				return
+			}
+		}
+		description, category := "", ""
+		if input.Description != nil {
+			description = strings.TrimSpace(*input.Description)
+		}
+		if input.Category != nil {
+			category = strings.TrimSpace(*input.Category)
+		}
+		tx, err := db.Pool.Begin(c)
 		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		defer tx.Rollback(c)
+		var id int
+		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active, description, category).Scan(&id)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := replaceProductOptions(c, tx, id, options); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := tx.Commit(c); err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -356,7 +397,7 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			apperrors.BadRequest(c, "invalid input")
 			return
 		}
-		if strings.TrimSpace(input.Name) == "" && input.Price == nil && strings.TrimSpace(input.SKU) == "" {
+		if strings.TrimSpace(input.Name) == "" && input.Price == nil && strings.TrimSpace(input.SKU) == "" && input.Description == nil && input.Category == nil && input.Options == nil {
 			apperrors.BadRequest(c, "at least one editable field is required")
 			return
 		}
@@ -364,9 +405,9 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			apperrors.BadRequest(c, "price must be valid")
 			return
 		}
-		var beforeName, beforeSKU string
+		var beforeName, beforeSKU, beforeDescription, beforeCategory string
 		var beforePrice float64
-		if err := db.Pool.QueryRow(c, "SELECT name, COALESCE(sku, ''), price FROM products WHERE id=$1", id).Scan(&beforeName, &beforeSKU, &beforePrice); err != nil {
+		if err := db.Pool.QueryRow(c, "SELECT name, COALESCE(sku, ''), price, description, category FROM products WHERE id=$1", id).Scan(&beforeName, &beforeSKU, &beforePrice, &beforeDescription, &beforeCategory); err != nil {
 			handleAdminLookupErr(c, err, "product not found")
 			return
 		}
@@ -382,11 +423,39 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 		if input.Price != nil {
 			price = *input.Price
 		}
-		if _, err := db.Pool.Exec(c, "UPDATE products SET name=$1, sku=NULLIF($2, ''), price=$3, updated_at=NOW() WHERE id=$4", name, sku, price, id); err != nil {
+		description, category := beforeDescription, beforeCategory
+		if input.Description != nil {
+			description = strings.TrimSpace(*input.Description)
+		}
+		if input.Category != nil {
+			category = strings.TrimSpace(*input.Category)
+		}
+		tx, err := db.Pool.Begin(c)
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
-		_ = writeAudit(c, db, adminActor(c), "product_updated", "product", id, gin.H{"before": gin.H{"name": beforeName, "sku": beforeSKU, "price": beforePrice}, "after": gin.H{"name": name, "sku": sku, "price": price}})
+		defer tx.Rollback(c)
+		if _, err := tx.Exec(c, "UPDATE products SET name=$1, sku=NULLIF($2, ''), price=$3, description=$4, category=$5, updated_at=NOW() WHERE id=$6", name, sku, price, description, category, id); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if input.Options != nil {
+			options, err := normalizeProductOptions(*input.Options)
+			if err != nil {
+				apperrors.BadRequest(c, err.Error())
+				return
+			}
+			if err := replaceProductOptions(c, tx, id, options); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+		}
+		if err := tx.Commit(c); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		_ = writeAudit(c, db, adminActor(c), "product_updated", "product", id, gin.H{"before": gin.H{"name": beforeName, "sku": beforeSKU, "price": beforePrice, "description": beforeDescription, "category": beforeCategory}, "after": gin.H{"name": name, "sku": sku, "price": price, "description": description, "category": category}})
 		logger.Info(logging.EventProductCreated, "event", "product_updated", "product_id", id)
 		item, _ := adminProduct(c, db, id)
 		c.JSON(http.StatusOK, item)
@@ -595,7 +664,7 @@ func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, erro
 }
 
 func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H, error) {
-	rows, err := db.Pool.Query(ctx, "SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id", orderID)
+	rows, err := db.Pool.Query(ctx, "SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price, oi.selected_options FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id", orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -605,10 +674,11 @@ func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H
 		var id, productID, quantity int
 		var name string
 		var price float64
-		if err := rows.Scan(&id, &productID, &name, &quantity, &price); err != nil {
+		var selectedOptions map[string]string
+		if err := rows.Scan(&id, &productID, &name, &quantity, &price, &selectedOptions); err != nil {
 			return nil, err
 		}
-		items = append(items, gin.H{"id": utils.EncodeID(id), "product_id": utils.EncodeID(productID), "name": name, "quantity": quantity, "price": price, "subtotal": price * float64(quantity)})
+		items = append(items, gin.H{"id": utils.EncodeID(id), "product_id": utils.EncodeID(productID), "name": name, "quantity": quantity, "price": price, "subtotal": price * float64(quantity), "selected_options": selectedOptions})
 	}
 	return items, rows.Err()
 }

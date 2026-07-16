@@ -19,10 +19,14 @@ type CreateProductInput struct {
 }
 
 type ProductResponse struct {
-	ID    string  `json:"id"`
-	Name  string  `json:"name"`
-	Price float64 `json:"price"`
-	Stock int     `json:"stock"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Price       float64                `json:"price"`
+	Stock       int                    `json:"stock"`
+	Description string                 `json:"description"`
+	Category    string                 `json:"category"`
+	Images      []productImageResponse `json:"images"`
+	Options     []productOption        `json:"options"`
 }
 
 func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
@@ -39,24 +43,47 @@ func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 }
 
 func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, error) {
-	rows, err := db.Pool.Query(c, "SELECT id, name, price, stock FROM products WHERE active = TRUE ORDER BY created_at DESC")
+	rows, err := db.Pool.Query(c, "SELECT id, name, price, stock, description, category FROM products WHERE active = TRUE ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	products := make([]ProductResponse, 0)
+	productIDs := make([]int, 0)
 	for rows.Next() {
 		var id int
 		var product ProductResponse
-		if err := rows.Scan(&id, &product.Name, &product.Price, &product.Stock); err != nil {
+		if err := rows.Scan(&id, &product.Name, &product.Price, &product.Stock, &product.Description, &product.Category); err != nil {
 			return nil, err
 		}
 		product.ID = utils.EncodeID(id)
 		products = append(products, product)
+		productIDs = append(productIDs, id)
 	}
-
-	return products, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	imagesByProduct, err := productImagesByProduct(c, db, productIDs)
+	if err != nil {
+		return nil, err
+	}
+	optionsByProduct, err := productOptionsByProduct(c, db, productIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index, id := range productIDs {
+		products[index].Images = imagesByProduct[id]
+		if products[index].Images == nil {
+			products[index].Images = []productImageResponse{}
+		}
+		products[index].Options = optionsByProduct[id]
+		if products[index].Options == nil {
+			products[index].Options = []productOption{}
+		}
+	}
+	return products, nil
 }
 
 func CreateProductHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
