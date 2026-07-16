@@ -45,6 +45,7 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	r.POST("/register", handlers.RegisterHandler(db, cfg, logger))
 	r.POST("/login", handlers.LoginHandler(db, cfg, logger))
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
+	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, logger))
 
 	authorized := r.Group("/")
@@ -74,6 +75,9 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	admin.PATCH("/admin/products/:id", handlers.AdminUpdateProductHandler(db, logger))
 	admin.PATCH("/admin/products/:id/status", handlers.AdminUpdateProductStatusHandler(db, logger))
 	admin.POST("/admin/products/:id/stock-adjustments", handlers.AdminAdjustProductStockHandler(db, logger))
+	admin.POST("/admin/products/:id/images", handlers.AdminUploadProductImageHandler(db))
+	admin.PATCH("/admin/products/:id/images/:image_id", handlers.AdminUpdateProductImageHandler(db))
+	admin.DELETE("/admin/products/:id/images/:image_id", handlers.AdminDeleteProductImageHandler(db))
 	admin.GET("/admin/orders", handlers.AdminListOrdersHandler(db))
 	admin.GET("/admin/orders/:id", handlers.AdminGetOrderHandler(db))
 	admin.POST("/admin/orders/:id/cancel", handlers.AdminCancelOrderHandler(db, logger))

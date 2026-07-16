@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,8 +29,9 @@ const (
 )
 
 type OrderItemInput struct {
-	ProductID utils.PublicID `json:"product_id" binding:"required"`
-	Quantity  int            `json:"quantity" binding:"required"`
+	ProductID       utils.PublicID    `json:"product_id" binding:"required"`
+	Quantity        int               `json:"quantity" binding:"required"`
+	SelectedOptions map[string]string `json:"selected_options,omitempty"`
 }
 
 type CreateOrderInput struct {
@@ -37,12 +39,13 @@ type CreateOrderInput struct {
 }
 
 type OrderItemResponse struct {
-	ID        string  `json:"id"`
-	ProductID string  `json:"product_id"`
-	Name      string  `json:"name"`
-	Quantity  int     `json:"quantity"`
-	Price     float64 `json:"price"`
-	Subtotal  float64 `json:"subtotal"`
+	ID              string            `json:"id"`
+	ProductID       string            `json:"product_id"`
+	Name            string            `json:"name"`
+	Quantity        int               `json:"quantity"`
+	Price           float64           `json:"price"`
+	Subtotal        float64           `json:"subtotal"`
+	SelectedOptions map[string]string `json:"selected_options"`
 }
 
 type OrderResponse struct {
@@ -60,6 +63,45 @@ func invalidOrderItem(item OrderItemInput) bool {
 
 func exceedsItemQuantityLimit(item OrderItemInput) bool {
 	return item.Quantity > maxQuantityPerItem
+}
+
+type groupedOrderItem struct {
+	ProductID       int
+	Quantity        int
+	SelectedOptions map[string]string
+}
+
+func groupOrderItems(items []OrderItemInput) ([]groupedOrderItem, map[int]int, error) {
+	grouped := make([]groupedOrderItem, 0, len(items))
+	groupIndex := make(map[string]int, len(items))
+	quantityByProduct := make(map[int]int, len(items))
+
+	for _, item := range items {
+		productID := item.ProductID.Int()
+		selectedOptions := item.SelectedOptions
+		if selectedOptions == nil {
+			selectedOptions = map[string]string{}
+		}
+		raw, err := json.Marshal(selectedOptions)
+		if err != nil {
+			return nil, nil, err
+		}
+		key := fmt.Sprintf("%d:%s", productID, raw)
+		quantityByProduct[productID] += item.Quantity
+
+		if index, exists := groupIndex[key]; exists {
+			grouped[index].Quantity += item.Quantity
+			continue
+		}
+		groupIndex[key] = len(grouped)
+		grouped = append(grouped, groupedOrderItem{
+			ProductID:       productID,
+			Quantity:        item.Quantity,
+			SelectedOptions: selectedOptions,
+		})
+	}
+
+	return grouped, quantityByProduct, nil
 }
 
 func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
@@ -98,12 +140,16 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			return
 		}
 
-		itemsByProduct := collection.GroupSumByInt(input.Items, func(item OrderItemInput) int {
-			return item.ProductID.Int()
-		}, func(item OrderItemInput) int {
-			return item.Quantity
-		})
-		productIDs := collection.SortedIntKeys(itemsByProduct)
+		groupedItems, quantityByProduct, err := groupOrderItems(input.Items)
+		if err != nil {
+			apperrors.BadRequest(c, "invalid selected options")
+			return
+		}
+		productIDs := collection.SortedIntKeys(quantityByProduct)
+		itemsByProduct := make(map[int][]groupedOrderItem, len(productIDs))
+		for _, item := range groupedItems {
+			itemsByProduct[item.ProductID] = append(itemsByProduct[item.ProductID], item)
+		}
 
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
@@ -125,14 +171,15 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 
 		var total money.Cents
 		type reservedItem struct {
-			ProductID int
-			Quantity  int
-			Price     money.Cents
+			ProductID       int
+			Quantity        int
+			Price           money.Cents
+			SelectedOptions map[string]string
 		}
-		reservedItems := make([]reservedItem, 0, len(itemsByProduct))
+		reservedItems := make([]reservedItem, 0, len(groupedItems))
 
 		for _, productID := range productIDs {
-			quantity := itemsByProduct[productID]
+			quantity := quantityByProduct[productID]
 			var priceCents int64
 			var stock int
 
@@ -154,6 +201,12 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 				apperrors.JSON(c, http.StatusConflict, apperrors.CodeInsufficientStock, "insufficient stock", gin.H{"product_id": utils.EncodeID(productID), "available": stock})
 				return
 			}
+			for _, item := range itemsByProduct[productID] {
+				if err := validateSelectedOptions(c, tx, productID, item.SelectedOptions); err != nil {
+					apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, err.Error(), gin.H{"product_id": utils.EncodeID(productID)})
+					return
+				}
+			}
 
 			_, err = tx.Exec(
 				c,
@@ -169,11 +222,14 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 
 			itemPrice := money.Cents(priceCents)
 			total += itemPrice * money.Cents(quantity)
-			reservedItems = append(reservedItems, reservedItem{
-				ProductID: productID,
-				Quantity:  quantity,
-				Price:     itemPrice,
-			})
+			for _, item := range itemsByProduct[productID] {
+				reservedItems = append(reservedItems, reservedItem{
+					ProductID:       productID,
+					Quantity:        item.Quantity,
+					Price:           itemPrice,
+					SelectedOptions: item.SelectedOptions,
+				})
+			}
 		}
 
 		var orderID int
@@ -193,11 +249,12 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 		for _, item := range reservedItems {
 			_, err := tx.Exec(
 				c,
-				"INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($1, $2, $3, $4)",
+				"INSERT INTO order_items (order_id, product_id, quantity, price, selected_options) VALUES ($1, $2, $3, $4, $5)",
 				orderID,
 				item.ProductID,
 				item.Quantity,
 				item.Price.DecimalString(),
+				item.SelectedOptions,
 			)
 			if err != nil {
 				apperrors.Internal(c)
@@ -317,7 +374,7 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 
 	rows, err := db.Pool.Query(
 		c,
-		`SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price
+		`SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price, oi.selected_options
 		 FROM order_items oi
 		 JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id=$1
@@ -334,7 +391,11 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 		var itemID int
 		var productID int
 		var item OrderItemResponse
-		if err := rows.Scan(&itemID, &productID, &item.Name, &item.Quantity, &item.Price); err != nil {
+		var selectedOptions []byte
+		if err := rows.Scan(&itemID, &productID, &item.Name, &item.Quantity, &item.Price, &selectedOptions); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(selectedOptions, &item.SelectedOptions); err != nil {
 			return nil, err
 		}
 		item.ID = utils.EncodeID(itemID)
