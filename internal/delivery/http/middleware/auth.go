@@ -40,12 +40,18 @@ func AuthMiddleware(db *database.DB, jwtSecret string) gin.HandlerFunc {
 		}
 
 		var currentRole string
-		if err := db.Pool.QueryRow(c, "SELECT role FROM users WHERE email=$1", claims.Email).Scan(&currentRole); err != nil {
+		var currentSessionVersion int64
+		if err := db.Pool.QueryRow(c, "SELECT role, session_version FROM users WHERE email=$1", claims.Email).Scan(&currentRole, &currentSessionVersion); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid token", nil)
 			} else {
 				apperrors.Internal(c)
 			}
+			c.Abort()
+			return
+		}
+		if currentSessionVersion != claims.SessionVersion {
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "session expired", nil)
 			c.Abort()
 			return
 		}

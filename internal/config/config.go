@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -32,6 +33,15 @@ type Config struct {
 	DatabaseMaxConnIdleTime time.Duration
 	ReleaseWorkerBatchSize  int
 	ReleaseWorkerMaxBatches int
+	StorefrontURL           string
+	SMTPHost                string
+	SMTPPort                int
+	SMTPUsername            string
+	SMTPPassword            string
+	SMTPFrom                string
+	SMTPTLSMode             string
+	EmailWorkerInterval     time.Duration
+	EmailWorkerBatchSize    int
 }
 
 func LoadConfig() *Config {
@@ -57,6 +67,15 @@ func LoadConfig() *Config {
 		DatabaseMaxConnIdleTime: getDurationEnv("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
 		ReleaseWorkerBatchSize:  getIntEnv("RELEASE_WORKER_BATCH_SIZE", 100),
 		ReleaseWorkerMaxBatches: getIntEnv("RELEASE_WORKER_MAX_BATCHES", 10),
+		StorefrontURL:           strings.TrimRight(getEnv("STOREFRONT_URL", "http://localhost:5173"), "/"),
+		SMTPHost:                strings.TrimSpace(getEnv("SMTP_HOST", "")),
+		SMTPPort:                getIntEnv("SMTP_PORT", 587),
+		SMTPUsername:            strings.TrimSpace(getEnv("SMTP_USERNAME", "")),
+		SMTPPassword:            getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:                strings.TrimSpace(getEnv("SMTP_FROM", "")),
+		SMTPTLSMode:             strings.ToLower(strings.TrimSpace(getEnv("SMTP_TLS_MODE", "starttls"))),
+		EmailWorkerInterval:     getDurationEnv("EMAIL_WORKER_INTERVAL", 10*time.Second),
+		EmailWorkerBatchSize:    getIntEnv("EMAIL_WORKER_BATCH_SIZE", 20),
 	}
 }
 
@@ -100,7 +119,19 @@ func (c *Config) Validate() error {
 	if c.ReleaseWorkerMaxBatches <= 0 || c.ReleaseWorkerMaxBatches > 100 {
 		return errors.New("RELEASE_WORKER_MAX_BATCHES must be between 1 and 100")
 	}
+	if c.SMTPPort != 0 && (c.SMTPPort < 0 || c.SMTPPort > 65535) {
+		return errors.New("SMTP_PORT must be between 1 and 65535")
+	}
+	if c.SMTPTLSMode != "" && c.SMTPTLSMode != "starttls" && c.SMTPTLSMode != "tls" && c.SMTPTLSMode != "none" {
+		return errors.New("SMTP_TLS_MODE must be starttls, tls or none")
+	}
+	if c.EmailWorkerInterval < 0 || c.EmailWorkerBatchSize < 0 || c.EmailWorkerBatchSize > 100 {
+		return errors.New("email worker settings are invalid")
+	}
 	if c.AppEnv == "production" {
+		if c.StorefrontURL == "" {
+			return errors.New("STOREFRONT_URL is required in production")
+		}
 		if c.PaymentsServiceURL == "" {
 			return errors.New("PAYMENTS_SERVICE_URL is required in production")
 		}
@@ -112,6 +143,24 @@ func (c *Config) Validate() error {
 		}
 		if c.GoogleClientID == "" {
 			return errors.New("GOOGLE_CLIENT_ID is required in production")
+		}
+		if c.SMTPHost == "" || c.SMTPFrom == "" {
+			return errors.New("SMTP_HOST and SMTP_FROM are required in production")
+		}
+		if c.SMTPPort <= 0 {
+			return errors.New("SMTP_PORT must be configured in production")
+		}
+		if _, err := mail.ParseAddress(c.SMTPFrom); err != nil {
+			return errors.New("SMTP_FROM must be a valid email address")
+		}
+		if c.EmailWorkerInterval <= 0 || c.EmailWorkerBatchSize <= 0 {
+			return errors.New("email worker must be enabled in production")
+		}
+		if c.SMTPTLSMode == "none" {
+			return errors.New("SMTP_TLS_MODE cannot be none in production")
+		}
+		if !strings.HasPrefix(c.StorefrontURL, "https://") {
+			return errors.New("STOREFRONT_URL must use HTTPS in production")
 		}
 		if allowsAllOrigins(c.CORSAllowedOrigins) {
 			return errors.New("CORS_ALLOWED_ORIGINS cannot allow all origins in production")

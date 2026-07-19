@@ -26,6 +26,21 @@ func TestGenerateAndValidateToken(t *testing.T) {
 	}
 }
 
+func TestGenerateAndValidateTokenPreservesSessionVersion(t *testing.T) {
+	secret := "01234567890123456789012345678901"
+	token, err := utils.GenerateTokenWithVersion("user@example.com", "user", 7, secret, time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateTokenWithVersion() error = %v", err)
+	}
+	claims, err := utils.ValidateToken(token, secret)
+	if err != nil {
+		t.Fatalf("ValidateToken() error = %v", err)
+	}
+	if claims.SessionVersion != 7 {
+		t.Fatalf("SessionVersion = %d, want 7", claims.SessionVersion)
+	}
+}
+
 func TestValidateTokenRejectsExpiredToken(t *testing.T) {
 	token, err := utils.GenerateToken("user@example.com", "user", "01234567890123456789012345678901", -time.Second)
 	if err != nil {

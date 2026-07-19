@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
@@ -150,7 +153,7 @@ type UpdateShipmentInput struct {
 	CustomerNote        *string `json:"customer_note"`
 }
 
-func AdminUpdateShipmentHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
+func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderID, ok := adminIDParam(c, "id")
 		if !ok {
@@ -173,8 +176,8 @@ func AdminUpdateShipmentHandler(db *database.DB, logger *slog.Logger) gin.Handle
 		}
 		defer tx.Rollback(c)
 
-		var orderStatus string
-		if err := tx.QueryRow(c, "SELECT status FROM orders WHERE id=$1 FOR UPDATE", orderID).Scan(&orderStatus); err != nil {
+		var orderStatus, customerEmail string
+		if err := tx.QueryRow(c, "SELECT o.status, u.email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1 FOR UPDATE OF o", orderID).Scan(&orderStatus, &customerEmail); err != nil {
 			handleAdminLookupErr(c, err, "order not found")
 			return
 		}
@@ -232,6 +235,11 @@ func AdminUpdateShipmentHandler(db *database.DB, logger *slog.Logger) gin.Handle
 			apperrors.Internal(c)
 			return
 		}
+		eventVersion := shipmentEventVersion(next)
+		if err := enqueueShipmentStatusEmail(c, tx, cfg, orderID, eventVersion, customerEmail, next.Status, next.TrackingURL); err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		if err := tx.Commit(c); err != nil {
 			apperrors.Internal(c)
 			return
@@ -245,6 +253,12 @@ func AdminUpdateShipmentHandler(db *database.DB, logger *slog.Logger) gin.Handle
 		}
 		c.JSON(http.StatusOK, order)
 	}
+}
+
+func shipmentEventVersion(shipment normalizedShipmentUpdate) string {
+	payload, _ := json.Marshal(shipment)
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:8])
 }
 
 func (input UpdateShipmentInput) empty() bool {
@@ -292,8 +306,8 @@ func normalizeShipmentUpdate(current ShipmentResponse, input UpdateShipmentInput
 	}
 	if next.TrackingURL != "" {
 		parsed, err := url.ParseRequestURI(next.TrackingURL)
-		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
-			return next, errors.New("tracking_url must be an absolute HTTP URL")
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+			return next, errors.New("tracking_url must be an absolute HTTPS URL")
 		}
 	}
 	if input.EstimatedDeliveryAt != nil {

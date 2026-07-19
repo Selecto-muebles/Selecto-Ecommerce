@@ -27,3 +27,22 @@ func TestNormalizeShipmentUpdateRejectsUnsafeTrackingURL(t *testing.T) {
 		t.Fatal("unsafe tracking URL was accepted")
 	}
 }
+
+func TestNormalizeShipmentUpdateRequiresHTTPS(t *testing.T) {
+	trackingURL := "http://tracking.example/ABC"
+	if _, err := normalizeShipmentUpdate(ShipmentResponse{Status: "preparing"}, UpdateShipmentInput{TrackingURL: &trackingURL}); err == nil {
+		t.Fatal("insecure tracking URL was accepted")
+	}
+}
+
+func TestShipmentEventVersionIsStableAndChangesWithCustomerVisibleState(t *testing.T) {
+	first := normalizedShipmentUpdate{Status: "shipped", Carrier: "Correo Argentino", TrackingNumber: "ABC"}
+	if shipmentEventVersion(first) != shipmentEventVersion(first) {
+		t.Fatal("identical shipment state produced different event versions")
+	}
+	second := first
+	second.TrackingNumber = "DEF"
+	if shipmentEventVersion(first) == shipmentEventVersion(second) {
+		t.Fatal("different shipment state produced the same event version")
+	}
+}

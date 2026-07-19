@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 
+	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
@@ -27,7 +28,7 @@ type PaymentWebhookInput struct {
 	Status    string         `json:"status"`
 }
 
-func PaymentWebhookHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
+func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input PaymentWebhookInput
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -61,13 +62,14 @@ func PaymentWebhookHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc
 
 		var currentStatus string
 		var orderTotal money.Cents
+		var customerEmail string
 		var existingPaymentID sql.NullInt64
 		var activePreferenceID sql.NullString
 		err = tx.QueryRow(
 			c,
-			"SELECT status, ROUND(total * 100)::BIGINT, payment_id, active_payment_preference_id FROM orders WHERE id=$1 FOR UPDATE",
+			"SELECT o.status, ROUND(o.total * 100)::BIGINT, o.payment_id, o.active_payment_preference_id, u.email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1 FOR UPDATE OF o",
 			orderID,
-		).Scan(&currentStatus, &orderTotal, &existingPaymentID, &activePreferenceID)
+		).Scan(&currentStatus, &orderTotal, &existingPaymentID, &activePreferenceID, &customerEmail)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "order not found", nil)
@@ -137,6 +139,10 @@ func PaymentWebhookHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc
 				newStatus,
 				eventKey,
 			); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			if err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus); err != nil {
 				apperrors.Internal(c)
 				return
 			}
@@ -233,6 +239,10 @@ func PaymentWebhookHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc
 			newStatus,
 			eventKey,
 		); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus); err != nil {
 			apperrors.Internal(c)
 			return
 		}
