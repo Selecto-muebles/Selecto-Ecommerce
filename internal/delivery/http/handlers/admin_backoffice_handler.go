@@ -660,7 +660,11 @@ func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, erro
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": total, "created_at": createdAt, "expires_at": nullableTime(expiresAt), "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "active_payment_preference_id": preferenceID, "active_checkout_url": checkoutURL, "active_payment_environment": environment, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName, "dni": dni, "street_address": streetAddress, "street_number": streetNumber, "postal_code": postalCode, "province": province, "locality": locality, "phone_number": phone}, "items": items, "audit_logs": audit}, nil
+	shippingAddress, shipment, err := loadOrderShipping(ctx, db.Pool, id)
+	if err != nil {
+		return nil, err
+	}
+	return gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": total, "created_at": createdAt, "expires_at": nullableTime(expiresAt), "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "active_payment_preference_id": preferenceID, "active_checkout_url": checkoutURL, "active_payment_environment": environment, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName, "dni": dni, "street_address": streetAddress, "street_number": streetNumber, "postal_code": postalCode, "province": province, "locality": locality, "phone_number": phone}, "shipping_address": shippingAddress, "shipment": shipment, "items": items, "audit_logs": audit}, nil
 }
 
 func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H, error) {

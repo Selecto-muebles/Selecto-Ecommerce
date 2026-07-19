@@ -44,6 +44,8 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 
 	r.POST("/register", handlers.RegisterHandler(db, cfg, logger))
 	r.POST("/login", handlers.LoginHandler(db, cfg, logger))
+	r.POST("/auth/google", handlers.GoogleAuthHandler(db, cfg, logger, nil))
+	r.POST("/auth/google/register", handlers.GoogleRegisterHandler(db, cfg, logger))
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
 	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, logger))
@@ -51,18 +53,13 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	authorized := r.Group("/")
 	authorized.Use(middleware.AuthMiddleware(db, cfg.JWTSecret))
 
-	authorized.GET("/me", func(c *gin.Context) {
-		email, _ := c.Get("email")
-
-		c.JSON(http.StatusOK, gin.H{
-			"email": email,
-		})
-	})
+	authorized.GET("/me", handlers.GetMeHandler(db))
 
 	authorized.POST("/orders", handlers.CreateOrderHandler(db, cfg, logger))
 	authorized.GET("/orders/:id", handlers.GetOrderHandler(db))
 	authorized.GET("/my-orders", handlers.GetMyOrdersHandler(db))
 	authorized.POST("/checkout", handlers.CheckoutHandler(db, cfg, logger))
+	authorized.POST("/auth/google/link", handlers.GoogleLinkHandler(db, cfg, logger, nil))
 
 	admin := authorized.Group("/")
 	admin.Use(middleware.RequireAdmin(db, logger))
@@ -81,6 +78,7 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	admin.GET("/admin/orders", handlers.AdminListOrdersHandler(db))
 	admin.GET("/admin/orders/:id", handlers.AdminGetOrderHandler(db))
 	admin.POST("/admin/orders/:id/cancel", handlers.AdminCancelOrderHandler(db, logger))
+	admin.PATCH("/admin/orders/:id/shipment", handlers.AdminUpdateShipmentHandler(db, logger))
 	admin.GET("/admin/customers", handlers.AdminListCustomersHandler(db))
 	admin.GET("/admin/customers/:id", handlers.AdminGetCustomerHandler(db))
 	admin.GET("/admin/audit-logs", handlers.AdminListAuditLogsHandler(db))

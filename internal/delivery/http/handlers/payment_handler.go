@@ -222,6 +222,10 @@ func PaymentWebhookHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc
 			apperrors.Internal(c)
 			return
 		}
+		if _, err := tx.Exec(c, "INSERT INTO shipments (order_id, status) VALUES ($1, $2) ON CONFLICT (order_id) DO NOTHING", orderID, domain.ShipmentStatusPreparing); err != nil {
+			apperrors.Internal(c)
+			return
+		}
 
 		if _, err := tx.Exec(
 			c,
