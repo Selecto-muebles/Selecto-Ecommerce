@@ -17,6 +17,7 @@ import (
 	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/money"
 	"Selecto-Ecommerce/internal/shared/utils"
+	"Selecto-Ecommerce/internal/shared/validation"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -35,7 +36,21 @@ type OrderItemInput struct {
 }
 
 type CreateOrderInput struct {
-	Items []OrderItemInput `json:"items" binding:"required"`
+	Items           []OrderItemInput          `json:"items" binding:"required"`
+	ShippingAddress *CreateOrderShippingInput `json:"shipping_address,omitempty"`
+}
+
+type CreateOrderShippingInput struct {
+	FirstName             string `json:"first_name"`
+	LastName              string `json:"last_name"`
+	DNI                   string `json:"dni"`
+	StreetAddress         string `json:"street_address"`
+	StreetNumber          string `json:"street_number"`
+	PostalCode            string `json:"postal_code"`
+	Province              string `json:"province"`
+	Locality              string `json:"locality"`
+	PhoneNumber           string `json:"phone_number"`
+	RequestedDeliveryDate string `json:"requested_delivery_date"`
 }
 
 type OrderItemResponse struct {
@@ -49,12 +64,14 @@ type OrderItemResponse struct {
 }
 
 type OrderResponse struct {
-	ID        string              `json:"id"`
-	UserID    int                 `json:"user_id"`
-	Status    string              `json:"status"`
-	Total     float64             `json:"total"`
-	CreatedAt time.Time           `json:"created_at"`
-	Items     []OrderItemResponse `json:"items"`
+	ID              string                   `json:"id"`
+	UserID          int                      `json:"user_id"`
+	Status          string                   `json:"status"`
+	Total           float64                  `json:"total"`
+	CreatedAt       time.Time                `json:"created_at"`
+	Items           []OrderItemResponse      `json:"items"`
+	ShippingAddress *ShippingAddressResponse `json:"shipping_address,omitempty"`
+	Shipment        *ShipmentResponse        `json:"shipment,omitempty"`
 }
 
 func invalidOrderItem(item OrderItemInput) bool {
@@ -63,6 +80,30 @@ func invalidOrderItem(item OrderItemInput) bool {
 
 func exceedsItemQuantityLimit(item OrderItemInput) bool {
 	return item.Quantity > maxQuantityPerItem
+}
+
+func (input CreateOrderShippingInput) normalizedProfile() validation.CustomerProfile {
+	return validation.NormalizeCustomerProfile(validation.CustomerProfile{
+		FirstName: input.FirstName, LastName: input.LastName, DNI: input.DNI,
+		StreetAddress: input.StreetAddress, StreetNumber: input.StreetNumber,
+		PostalCode: input.PostalCode, Province: input.Province, Locality: input.Locality,
+		PhoneNumber: input.PhoneNumber,
+	})
+}
+
+func parseRequestedDeliveryDate(value string, now time.Time) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	requested, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return nil, errors.New("requested_delivery_date must use YYYY-MM-DD")
+	}
+	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	if requested.Before(today) {
+		return nil, errors.New("requested_delivery_date cannot be in the past")
+	}
+	return &requested, nil
 }
 
 type groupedOrderItem struct {
@@ -159,13 +200,36 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 		defer tx.Rollback(c)
 
 		var userID int
-		err = tx.QueryRow(c, "SELECT id FROM users WHERE email=$1", email).Scan(&userID)
+		var accountProfile validation.CustomerProfile
+		err = tx.QueryRow(c, `SELECT id, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(dni, ''),
+			COALESCE(street_address, ''), COALESCE(street_number, ''), COALESCE(postal_code, ''),
+			COALESCE(province, ''), COALESCE(locality, ''), COALESCE(phone_number, '')
+			FROM users WHERE email=$1`, email).Scan(
+			&userID, &accountProfile.FirstName, &accountProfile.LastName, &accountProfile.DNI,
+			&accountProfile.StreetAddress, &accountProfile.StreetNumber, &accountProfile.PostalCode,
+			&accountProfile.Province, &accountProfile.Locality, &accountProfile.PhoneNumber,
+		)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "user not found", nil)
 				return
 			}
 			apperrors.Internal(c)
+			return
+		}
+
+		shippingProfile := validation.NormalizeCustomerProfile(accountProfile)
+		var requestedDeliveryDate *time.Time
+		if input.ShippingAddress != nil {
+			shippingProfile = input.ShippingAddress.normalizedProfile()
+			requestedDeliveryDate, err = parseRequestedDeliveryDate(input.ShippingAddress.RequestedDeliveryDate, time.Now())
+			if err != nil {
+				apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, err.Error(), nil)
+				return
+			}
+		}
+		if err := shippingProfile.Validate(); err != nil {
+			apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "shipping address must be valid", nil)
 			return
 		}
 
@@ -242,6 +306,29 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			int(cfg.OrderPendingTTL.Seconds()),
 		).Scan(&orderID)
 		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+
+		if _, err := tx.Exec(c, `
+			INSERT INTO order_shipping_addresses (
+				order_id,
+				recipient_first_name,
+				recipient_last_name,
+				dni,
+				street_address,
+				street_number,
+				postal_code,
+				province,
+				locality,
+				phone_number,
+				requested_delivery_date
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+			orderID, shippingProfile.FirstName, shippingProfile.LastName, shippingProfile.DNI,
+			shippingProfile.StreetAddress, shippingProfile.StreetNumber, shippingProfile.PostalCode,
+			shippingProfile.Province, shippingProfile.Locality, shippingProfile.PhoneNumber,
+			requestedDeliveryDate); err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -346,6 +433,13 @@ func GetMyOrdersHandler(db *database.DB) gin.HandlerFunc {
 				return
 			}
 			order.ID = utils.EncodeID(orderID)
+			address, shipment, err := loadOrderShipping(c, db.Pool, orderID)
+			if err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			order.ShippingAddress = address
+			order.Shipment = shipment
 			orders = append(orders, order)
 		}
 
@@ -371,6 +465,10 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 		return nil, err
 	}
 	order.ID = utils.EncodeID(dbOrderID)
+	order.ShippingAddress, order.Shipment, err = loadOrderShipping(c, db.Pool, orderID)
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := db.Pool.Query(
 		c,

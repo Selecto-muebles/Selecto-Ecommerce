@@ -9,17 +9,18 @@ import (
 type Code string
 
 const (
-	CodeInvalidInput      Code = "invalid_input"
-	CodeUnauthorized      Code = "unauthorized"
-	CodeForbidden         Code = "forbidden"
-	CodeNotFound          Code = "not_found"
-	CodeConflict          Code = "conflict"
-	CodeRateLimited       Code = "rate_limited"
-	CodeInternal          Code = "internal_error"
-	CodeBadGateway        Code = "bad_gateway"
-	CodeInvalidSignature  Code = "invalid_signature"
-	CodeExpiredSignature  Code = "expired_signature"
-	CodeInsufficientStock Code = "insufficient_stock"
+	CodeInvalidInput       Code = "invalid_input"
+	CodeUnauthorized       Code = "unauthorized"
+	CodeForbidden          Code = "forbidden"
+	CodeNotFound           Code = "not_found"
+	CodeConflict           Code = "conflict"
+	CodeRateLimited        Code = "rate_limited"
+	CodeInternal           Code = "internal_error"
+	CodeBadGateway         Code = "bad_gateway"
+	CodeServiceUnavailable Code = "service_unavailable"
+	CodeInvalidSignature   Code = "invalid_signature"
+	CodeExpiredSignature   Code = "expired_signature"
+	CodeInsufficientStock  Code = "insufficient_stock"
 )
 
 func JSON(c *gin.Context, status int, code Code, message string, details gin.H) {

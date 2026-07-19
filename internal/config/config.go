@@ -19,6 +19,7 @@ type Config struct {
 	PaymentsServiceURL      string
 	JWTSecret               string
 	JWTTTL                  time.Duration
+	GoogleClientID          string
 	InternalWebhookSecret   string
 	CORSAllowedOrigins      []string
 	RateLimitPerMinute      int
@@ -43,6 +44,7 @@ func LoadConfig() *Config {
 		PaymentsServiceURL:      strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
 		JWTSecret:               getEnv("JWT_SECRET", ""),
 		JWTTTL:                  getDurationEnv("JWT_TTL", 72*time.Hour),
+		GoogleClientID:          strings.TrimSpace(getEnv("GOOGLE_CLIENT_ID", "")),
 		InternalWebhookSecret:   getEnv("INTERNAL_WEBHOOK_SECRET", ""),
 		CORSAllowedOrigins:      splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
 		RateLimitPerMinute:      getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
@@ -107,6 +109,9 @@ func (c *Config) Validate() error {
 		}
 		if c.JWTTTL > 24*time.Hour {
 			return errors.New("JWT_TTL cannot exceed 24 hours in production")
+		}
+		if c.GoogleClientID == "" {
+			return errors.New("GOOGLE_CLIENT_ID is required in production")
 		}
 		if allowsAllOrigins(c.CORSAllowedOrigins) {
 			return errors.New("CORS_ALLOWED_ORIGINS cannot allow all origins in production")

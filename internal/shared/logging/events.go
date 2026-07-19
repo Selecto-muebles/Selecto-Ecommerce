@@ -12,6 +12,7 @@ const (
 	EventUserRegistrationRejected        = "user_registration_rejected"
 	EventUserLoginCompleted              = "user_login_completed"
 	EventUserLoginRejected               = "user_login_rejected"
+	EventGoogleLoginRejected             = "google_login_rejected"
 	EventProductCatalogListed            = "product_catalog_listed"
 	EventProductCreated                  = "product_created"
 	EventProductCreationRejected         = "product_creation_rejected"
