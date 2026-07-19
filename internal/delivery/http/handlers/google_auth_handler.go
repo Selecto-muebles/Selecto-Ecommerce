@@ -215,7 +215,7 @@ func GoogleAuthHandler(db *database.DB, cfg *config.Config, logger *slog.Logger,
 			JOIN users u ON u.id=i.user_id
 			WHERE i.provider='google' AND i.provider_subject=$1`, identity.Subject).Scan(&userID, &userEmail, &role)
 		if err == nil {
-			respondWithSession(c, cfg, logger, userID, userEmail, role, "google")
+			respondWithSession(c, db, cfg, logger, userID, userEmail, role, "google")
 			return
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -292,8 +292,8 @@ func GoogleRegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		}
 		defer tx.Rollback(c)
 		var userID int
-		err = tx.QueryRow(c, `INSERT INTO users (email, password, role, first_name, last_name, dni, street_address, street_number, postal_code, province, locality, phone_number)
-			VALUES ($1, NULL, 'user', $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		err = tx.QueryRow(c, `INSERT INTO users (email, password, role, first_name, last_name, dni, street_address, street_number, postal_code, province, locality, phone_number, email_verified_at)
+			VALUES ($1, NULL, 'user', $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id`,
 			claims.Email, profile.FirstName, profile.LastName, profile.DNI, profile.StreetAddress, profile.StreetNumber, profile.PostalCode, profile.Province, profile.Locality, profile.PhoneNumber,
 		).Scan(&userID)
 		if err != nil {
@@ -320,7 +320,7 @@ func GoogleRegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			apperrors.Internal(c)
 			return
 		}
-		respondWithSession(c, cfg, logger, userID, claims.Email, "user", "google_registration")
+		respondWithSession(c, db, cfg, logger, userID, claims.Email, "user", "google_registration")
 	}
 }
 
@@ -372,6 +372,7 @@ func GoogleLinkHandler(db *database.DB, cfg *config.Config, logger *slog.Logger,
 		}
 		if command.RowsAffected() > 0 {
 			_, _ = db.Pool.Exec(c, "INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, 'google_account_linked', 'user', $2, $3)", email, userID, `{"provider":"google"}`)
+			_, _ = db.Pool.Exec(c, "UPDATE users SET email_verified_at=COALESCE(email_verified_at, NOW()) WHERE id=$1", userID)
 		}
 		c.JSON(http.StatusOK, gin.H{"linked": true})
 	}
@@ -396,12 +397,17 @@ func verifyGoogleCredential(c *gin.Context, cfg *config.Config, verifier GoogleI
 	return identity, true
 }
 
-func respondWithSession(c *gin.Context, cfg *config.Config, logger *slog.Logger, userID int, email, role, source string) {
+func respondWithSession(c *gin.Context, db *database.DB, cfg *config.Config, logger *slog.Logger, userID int, email, role, source string) {
 	if role != "user" {
 		apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "Google sign-in is available only for customer accounts", nil)
 		return
 	}
-	token, err := utils.GenerateToken(email, role, cfg.JWTSecret, cfg.JWTTTL)
+	var sessionVersion int64
+	if err := db.Pool.QueryRow(c, "SELECT session_version FROM users WHERE id=$1", userID).Scan(&sessionVersion); err != nil {
+		apperrors.Internal(c)
+		return
+	}
+	token, err := utils.GenerateTokenWithVersion(email, role, sessionVersion, cfg.JWTSecret, cfg.JWTTTL)
 	if err != nil {
 		apperrors.Internal(c)
 		return

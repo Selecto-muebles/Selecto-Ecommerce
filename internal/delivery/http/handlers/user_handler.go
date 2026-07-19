@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/utils"
@@ -38,7 +40,6 @@ const maxBcryptPasswordBytes = 72
 
 func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_ = cfg
 		var input RegisterInput
 
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -50,7 +51,7 @@ func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 		customerProfile := validation.NormalizeCustomerProfile(input.customerProfile())
 		input.applyCustomerProfile(customerProfile)
 
-		if input.Email == "" || !strings.Contains(input.Email, "@") || len(input.Password) < 8 || len(input.Password) > maxBcryptPasswordBytes {
+		if !validEmail(input.Email) || len(input.Password) < 8 || len(input.Password) > maxBcryptPasswordBytes {
 			logger.Warn(logging.EventUserRegistrationRejected, "reason", "invalid_credentials_policy")
 			apperrors.BadRequest(c, "email and password must be valid")
 			return
@@ -67,8 +68,14 @@ func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			return
 		}
 
+		tx, err := db.Pool.Begin(c)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		defer tx.Rollback(c)
 		var userID int
-		err = db.Pool.QueryRow(
+		err = tx.QueryRow(
 			c,
 			`INSERT INTO users (
 				email,
@@ -109,9 +116,22 @@ func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			apperrors.Internal(c)
 			return
 		}
+		verificationToken, err := createAccountToken(c, tx, userID, "email_verification", emailVerificationTTL)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := mailinfra.Enqueue(c, tx, fmt.Sprintf("verify:%d:%s", userID, hashAccountToken(verificationToken)[:16]), input.Email, "verify_email", gin.H{"url": accountURL(cfg.StorefrontURL, "/verificar-email", verificationToken)}); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := tx.Commit(c); err != nil {
+			apperrors.Internal(c)
+			return
+		}
 
 		logger.Info(logging.EventUserRegistrationCompleted, "user_id", userID, "role", "user")
-		c.JSON(http.StatusOK, gin.H{"message": "user created"})
+		c.JSON(http.StatusOK, gin.H{"message": "user created", "verification_required": true})
 	}
 }
 
@@ -146,13 +166,15 @@ func GetMeHandler(db *database.DB) gin.HandlerFunc {
 		emailValue, _ := c.Get("email")
 		email := strings.ToLower(strings.TrimSpace(fmt.Sprint(emailValue)))
 		var profile RegisterInput
+		var verified bool
 		if err := db.Pool.QueryRow(c, `SELECT email, COALESCE(first_name, ''), COALESCE(last_name, ''),
 			COALESCE(dni, ''), COALESCE(street_address, ''), COALESCE(street_number, ''),
-			COALESCE(postal_code, ''), COALESCE(province, ''), COALESCE(locality, ''), COALESCE(phone_number, '')
+			COALESCE(postal_code, ''), COALESCE(province, ''), COALESCE(locality, ''), COALESCE(phone_number, ''),
+			COALESCE(email_verified_at IS NOT NULL, FALSE)
 			FROM users WHERE email=$1 AND role='user'`, email).Scan(
 			&profile.Email, &profile.FirstName, &profile.LastName, &profile.DNI,
 			&profile.StreetAddress, &profile.StreetNumber, &profile.PostalCode,
-			&profile.Province, &profile.Locality, &profile.PhoneNumber,
+			&profile.Province, &profile.Locality, &profile.PhoneNumber, &verified,
 		); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "user not found", nil)
@@ -161,12 +183,7 @@ func GetMeHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"email": profile.Email, "first_name": profile.FirstName, "last_name": profile.LastName,
-			"dni": profile.DNI, "street_address": profile.StreetAddress, "street_number": profile.StreetNumber,
-			"postal_code": profile.PostalCode, "province": profile.Province, "locality": profile.Locality,
-			"phone_number": profile.PhoneNumber,
-		})
+		c.JSON(http.StatusOK, profileResponse(profile.Email, profile.customerProfile(), verified))
 	}
 }
 
@@ -186,15 +203,17 @@ func LoginHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.
 		}
 		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 
-		var storedPassword string
+		var storedPassword sql.NullString
+		var verifiedAt sql.NullTime
 		var role string
 		var userID int
+		var sessionVersion int64
 
 		err := db.Pool.QueryRow(
 			c,
-			"SELECT id, password, role FROM users WHERE email=$1",
+			"SELECT id, password, role, email_verified_at, session_version FROM users WHERE email=$1",
 			input.Email,
-		).Scan(&userID, &storedPassword, &role)
+		).Scan(&userID, &storedPassword, &role, &verifiedAt, &sessionVersion)
 
 		if err != nil {
 			logger.Warn(logging.EventUserLoginRejected, "reason", "invalid_credentials")
@@ -202,14 +221,24 @@ func LoginHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.
 			return
 		}
 
-		err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(input.Password))
+		if !storedPassword.Valid {
+			logger.Warn(logging.EventUserLoginRejected, "reason", "password_not_configured", "user_id", userID)
+			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid credentials", nil)
+			return
+		}
+		err = bcrypt.CompareHashAndPassword([]byte(storedPassword.String), []byte(input.Password))
 		if err != nil {
 			logger.Warn(logging.EventUserLoginRejected, "reason", "invalid_credentials", "user_id", userID)
 			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "invalid credentials", nil)
 			return
 		}
+		if role == "user" && !verifiedAt.Valid {
+			logger.Warn(logging.EventUserLoginRejected, "reason", "email_not_verified", "user_id", userID)
+			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "email verification required", gin.H{"verification_required": true})
+			return
+		}
 
-		token, err := utils.GenerateToken(input.Email, role, cfg.JWTSecret, cfg.JWTTTL)
+		token, err := utils.GenerateTokenWithVersion(input.Email, role, sessionVersion, cfg.JWTSecret, cfg.JWTTTL)
 		if err != nil {
 			apperrors.Internal(c)
 			return

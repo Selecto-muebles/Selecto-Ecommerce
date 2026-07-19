@@ -13,6 +13,7 @@ import (
 	"Selecto-Ecommerce/internal/config"
 	httpDelivery "Selecto-Ecommerce/internal/delivery/http"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	"Selecto-Ecommerce/internal/shared/logging"
 )
 
@@ -48,6 +49,14 @@ func main() {
 	appCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	httpDelivery.StartExpiredOrderWorker(appCtx, db, cfg, logger)
+	if cfg.SMTPHost != "" && cfg.SMTPFrom != "" {
+		mailinfra.NewWorker(db, mailinfra.NewSMTPMailer(mailinfra.SMTPConfig{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword, From: cfg.SMTPFrom, TLSMode: cfg.SMTPTLSMode,
+		}), logger, cfg.EmailWorkerInterval, cfg.EmailWorkerBatchSize).Start(appCtx)
+	} else {
+		logger.Warn("transactional_email_disabled", "reason", "SMTP is not configured")
+	}
 	router := httpDelivery.SetupRouter(db, cfg, logger)
 
 	logger.Info(logging.EventServerStarting, "port", cfg.Port, "environment", cfg.AppEnv, "version", version, "commit", commit)

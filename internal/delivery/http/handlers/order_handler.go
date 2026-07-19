@@ -2,11 +2,14 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"Selecto-Ecommerce/internal/config"
@@ -100,8 +103,8 @@ func parseRequestedDeliveryDate(value string, now time.Time) (*time.Time, error)
 		return nil, errors.New("requested_delivery_date must use YYYY-MM-DD")
 	}
 	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
-	if requested.Before(today) {
-		return nil, errors.New("requested_delivery_date cannot be in the past")
+	if !requested.After(today) {
+		return nil, errors.New("requested_delivery_date must be after today")
 	}
 	return &requested, nil
 }
@@ -160,6 +163,18 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			apperrors.BadRequest(c, "order must contain at least one item")
 			return
 		}
+		idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+		if idempotencyKey != "" && (len(idempotencyKey) < 8 || len(idempotencyKey) > 128) {
+			apperrors.BadRequest(c, "Idempotency-Key must contain between 8 and 128 characters")
+			return
+		}
+		rawRequest, err := json.Marshal(input)
+		if err != nil {
+			apperrors.BadRequest(c, "invalid input")
+			return
+		}
+		digest := sha256.Sum256(rawRequest)
+		requestHash := hex.EncodeToString(digest[:])
 		if len(input.Items) > maxItemsPerOrder {
 			apperrors.BadRequest(c, "too many items in order")
 			return
@@ -216,6 +231,34 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			}
 			apperrors.Internal(c)
 			return
+		}
+		if idempotencyKey != "" {
+			lockKey := fmt.Sprintf("create-order:%d:%s", userID, idempotencyKey)
+			if _, err := tx.Exec(c, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			var existingID int
+			var existingStatus string
+			var existingTotal float64
+			var existingHash string
+			err := tx.QueryRow(c, "SELECT id, status, total, COALESCE(request_hash, '') FROM orders WHERE user_id=$1 AND idempotency_key=$2", userID, idempotencyKey).Scan(&existingID, &existingStatus, &existingTotal, &existingHash)
+			if err == nil {
+				if existingHash != requestHash {
+					apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "Idempotency-Key was already used with a different order", nil)
+					return
+				}
+				if err := tx.Commit(c); err != nil {
+					apperrors.Internal(c)
+					return
+				}
+				c.JSON(http.StatusOK, gin.H{"order_id": utils.EncodeID(existingID), "status": existingStatus, "total": existingTotal, "replayed": true})
+				return
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				apperrors.Internal(c)
+				return
+			}
 		}
 
 		shippingProfile := validation.NormalizeCustomerProfile(accountProfile)
@@ -299,11 +342,13 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 		var orderID int
 		err = tx.QueryRow(
 			c,
-			"INSERT INTO orders (user_id, status, total, expires_at) VALUES ($1, $2, $3, NOW() + make_interval(secs => $4)) RETURNING id",
+			"INSERT INTO orders (user_id, status, total, expires_at, idempotency_key, request_hash) VALUES ($1, $2, $3, NOW() + make_interval(secs => $4), NULLIF($5, ''), NULLIF($6, '')) RETURNING id",
 			userID,
 			domain.OrderStatusPending,
 			total.DecimalString(),
 			int(cfg.OrderPendingTTL.Seconds()),
+			idempotencyKey,
+			requestHash,
 		).Scan(&orderID)
 		if err != nil {
 			apperrors.Internal(c)
@@ -361,6 +406,10 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			apperrors.Internal(c)
 			return
 		}
+		if err := enqueueOrderCreatedEmail(c, tx, cfg, orderID, email, total); err != nil {
+			apperrors.Internal(c)
+			return
+		}
 
 		if err := tx.Commit(c); err != nil {
 			apperrors.Internal(c)
@@ -400,6 +449,82 @@ func GetOrderHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 
+		c.JSON(http.StatusOK, order)
+	}
+}
+
+func CancelOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orderID, err := utils.DecodeID(c.Param("id"))
+		if err != nil || orderID <= 0 {
+			apperrors.BadRequest(c, "invalid order id")
+			return
+		}
+		email := strings.ToLower(strings.TrimSpace(fmt.Sprint(c.MustGet("email"))))
+		tx, err := db.Pool.Begin(c)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		defer tx.Rollback(c)
+		var status string
+		var activePreference string
+		err = tx.QueryRow(c, `SELECT o.status, COALESCE(o.active_payment_preference_id, '') FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1 AND u.email=$2 FOR UPDATE OF o`, orderID, email).Scan(&status, &activePreference)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "order not found", nil)
+				return
+			}
+			apperrors.Internal(c)
+			return
+		}
+		if status == string(domain.OrderStatusCancelled) {
+			if err := tx.Commit(c); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			order, err := fetchOrder(c, db, orderID, email, false)
+			if err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			c.JSON(http.StatusOK, order)
+			return
+		}
+		if status != string(domain.OrderStatusPending) {
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "only unpaid pending orders can be cancelled", gin.H{"status": status})
+			return
+		}
+		if activePreference != "" {
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "payment was already initiated; wait for its final status before requesting cancellation", gin.H{"payment_initiated": true})
+			return
+		}
+		if err := restoreOrderStock(c, tx, orderID); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if _, err := tx.Exec(c, "UPDATE orders SET status='cancelled', payment_status='cancelled', cancelled_at=NOW() WHERE id=$1", orderID); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if _, err := tx.Exec(c, "INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, 'order_cancelled_by_customer', 'order', $2, $3)", email, orderID, `{"previous_status":"pending"}`); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, 0, email, "cancelled"); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if err := tx.Commit(c); err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		logger.Info("customer_order_cancelled", "order_id", orderID)
+		order, err := fetchOrder(c, db, orderID, email, false)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		c.JSON(http.StatusOK, order)
 	}
 }

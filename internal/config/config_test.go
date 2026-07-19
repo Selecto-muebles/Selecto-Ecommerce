@@ -54,3 +54,45 @@ func TestValidateRejectsUnsafePoolAndWorkerLimits(t *testing.T) {
 		t.Fatal("unsafe worker validation error = nil")
 	}
 }
+
+func TestValidateRequiresOperationalEmailInProduction(t *testing.T) {
+	cfg := Config{
+		AppEnv:                  "production",
+		DatabaseURL:             "postgres://example",
+		PaymentsServiceURL:      "http://payments:8081",
+		JWTSecret:               "test-secret-with-at-least-32-characters",
+		JWTTTL:                  time.Hour,
+		GoogleClientID:          "client.apps.googleusercontent.com",
+		InternalWebhookSecret:   "internal-secret-with-at-least-32-chars",
+		CORSAllowedOrigins:      []string{"https://tienda.example"},
+		RateLimitPerMinute:      120,
+		OrderPendingTTL:         15 * time.Minute,
+		ReleaseWorkerInterval:   time.Minute,
+		PaymentsRequestTimeout:  27 * time.Second,
+		DatabaseMaxConns:        10,
+		DatabaseMinConns:        2,
+		DatabaseMaxConnLifetime: 30 * time.Minute,
+		DatabaseMaxConnIdleTime: 5 * time.Minute,
+		ReleaseWorkerBatchSize:  100,
+		ReleaseWorkerMaxBatches: 10,
+		StorefrontURL:           "https://tienda.example",
+		SMTPHost:                "smtp.example",
+		SMTPPort:                587,
+		SMTPFrom:                "Selecto <ventas@tienda.example>",
+		SMTPTLSMode:             "starttls",
+		EmailWorkerInterval:     10 * time.Second,
+		EmailWorkerBatchSize:    20,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("production email config validation error = %v", err)
+	}
+	cfg.SMTPFrom = "invalid"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("invalid SMTP_FROM validation error = nil")
+	}
+	cfg.SMTPFrom = "ventas@tienda.example"
+	cfg.EmailWorkerBatchSize = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("disabled production email worker validation error = nil")
+	}
+}

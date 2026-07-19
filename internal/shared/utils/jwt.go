@@ -8,19 +8,25 @@ import (
 )
 
 type Claims struct {
-	Email string
-	Role  string
+	Email          string
+	Role           string
+	SessionVersion int64
 }
 
 func GenerateToken(email string, role string, secret string, ttl time.Duration) (string, error) {
+	return GenerateTokenWithVersion(email, role, 0, secret, ttl)
+}
+
+func GenerateTokenWithVersion(email string, role string, sessionVersion int64, secret string, ttl time.Duration) (string, error) {
 	if secret == "" {
 		return "", errors.New("jwt secret is required")
 	}
 	claims := jwt.MapClaims{
-		"email": email,
-		"role":  role,
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(ttl).Unix(),
+		"email":           email,
+		"role":            role,
+		"session_version": sessionVersion,
+		"iat":             time.Now().Unix(),
+		"exp":             time.Now().Add(ttl).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -58,5 +64,10 @@ func ValidateToken(tokenString string, secret string) (*Claims, error) {
 		return nil, errors.New("missing role claim")
 	}
 
-	return &Claims{Email: email, Role: role}, nil
+	sessionVersion, ok := claims["session_version"].(float64)
+	if !ok || sessionVersion < 0 || sessionVersion != float64(int64(sessionVersion)) {
+		return nil, errors.New("missing session version claim")
+	}
+
+	return &Claims{Email: email, Role: role, SessionVersion: int64(sessionVersion)}, nil
 }
