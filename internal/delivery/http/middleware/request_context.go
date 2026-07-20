@@ -3,6 +3,7 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"Selecto-Ecommerce/internal/shared/logging"
@@ -11,7 +12,39 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const rateLimitLogInterval = time.Second
+
+type requestLogSampler struct {
+	mu                   sync.Mutex
+	lastRateLimitLog     time.Time
+	suppressedRateLimits uint64
+}
+
+func (s *requestLogSampler) allow(path string, status int, now time.Time) (bool, uint64) {
+	if (path == "/health" || path == "/ready") && status < http.StatusInternalServerError {
+		return false, 0
+	}
+	if status != http.StatusTooManyRequests {
+		return true, 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.lastRateLimitLog.IsZero() && now.Sub(s.lastRateLimitLog) < rateLimitLogInterval {
+		s.suppressedRateLimits++
+		return false, 0
+	}
+
+	suppressed := s.suppressedRateLimits
+	s.suppressedRateLimits = 0
+	s.lastRateLimitLog = now
+	return true, suppressed
+}
+
 func RequestContext(logger *slog.Logger) gin.HandlerFunc {
+	sampler := &requestLogSampler{}
+
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
 		if requestID == "" {
@@ -29,15 +62,25 @@ func RequestContext(logger *slog.Logger) gin.HandlerFunc {
 
 		start := time.Now()
 		c.Next()
+		completedAt := time.Now()
+		path := c.FullPath()
+		if path == "" {
+			path = c.Request.URL.Path
+		}
+		shouldLog, suppressed := sampler.allow(path, c.Writer.Status(), completedAt)
+		if !shouldLog {
+			return
+		}
 
 		logger.Info(logging.EventHTTPRouteCompleted,
 			"request_id", requestID,
 			"correlation_id", correlationID,
 			"method", c.Request.Method,
-			"path", c.FullPath(),
+			"path", path,
 			"status", c.Writer.Status(),
-			"latency_ms", time.Since(start).Milliseconds(),
+			"latency_ms", completedAt.Sub(start).Milliseconds(),
 			"client_ip", c.ClientIP(),
+			"suppressed_since_last", suppressed,
 		)
 	}
 }
