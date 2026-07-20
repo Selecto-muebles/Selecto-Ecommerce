@@ -25,6 +25,10 @@ func RateLimit(limitPerMinute int) gin.HandlerFunc {
 	nextCleanup := time.Now().Add(cleanupInterval)
 
 	return func(c *gin.Context) {
+		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/ready" {
+			c.Next()
+			return
+		}
 		key := c.ClientIP()
 		now := time.Now()
 

@@ -24,7 +24,9 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 	case "password_reset":
 		return "Restablecé tu contraseña Selecto", wrapper(`<h2>Restablecer contraseña</h2><p>El enlace vence en 30 minutos. Si no lo pediste, ignorá este mensaje.</p>` + button("Crear nueva contraseña", value("url"))), nil
 	case "order_created":
-		return "Recibimos tu orden " + value("order_id"), wrapper(`<h2>Orden ` + value("order_id") + ` creada</h2><p>Reservamos tus productos mientras completás el pago.</p><p><strong>Total de productos: ` + value("total") + `</strong></p>` + button("Ver mi orden", value("url"))), nil
+		content := `<h2>Orden ` + value("order_id") + ` creada</h2><p>Reservamos tus productos mientras completás el pago.</p>`
+		content += `<section style="border:1px solid #bbb;padding:16px;margin:20px 0"><p style="margin:0 0 8px;font-size:12px;text-transform:uppercase">Constancia de orden</p><p style="margin:0"><strong>Total de productos: ` + value("total") + `</strong></p><p style="margin:8px 0 0;font-size:12px;color:#666">Documento informativo. No válido como factura fiscal.</p></section>`
+		return "Recibimos tu orden " + value("order_id"), wrapper(content + button("Ver mi orden", value("url"))), nil
 	case "payment_status":
 		return "Actualización de pago de la orden " + value("order_id"), wrapper(`<h2>Estado del pago: ` + value("status_label") + `</h2><p>Orden ` + value("order_id") + `.</p>` + button("Consultar orden", value("url"))), nil
 	case "shipment_status":
