@@ -144,8 +144,8 @@ func (c *Config) Validate() error {
 		if c.GoogleClientID == "" {
 			return errors.New("GOOGLE_CLIENT_ID is required in production")
 		}
-		if c.SMTPHost == "" || c.SMTPFrom == "" {
-			return errors.New("SMTP_HOST and SMTP_FROM are required in production")
+		if c.SMTPHost == "" || c.SMTPUsername == "" || c.SMTPPassword == "" || c.SMTPFrom == "" {
+			return errors.New("SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM are required in production")
 		}
 		if c.SMTPPort <= 0 {
 			return errors.New("SMTP_PORT must be configured in production")
