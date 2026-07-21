@@ -78,6 +78,8 @@ func TestValidateRequiresOperationalEmailInProduction(t *testing.T) {
 		StorefrontURL:           "https://tienda.example",
 		SMTPHost:                "smtp.example",
 		SMTPPort:                587,
+		SMTPUsername:            "selecto-smtp",
+		SMTPPassword:            "smtp-secret",
 		SMTPFrom:                "Selecto <ventas@tienda.example>",
 		SMTPTLSMode:             "starttls",
 		EmailWorkerInterval:     10 * time.Second,
@@ -86,6 +88,11 @@ func TestValidateRequiresOperationalEmailInProduction(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("production email config validation error = %v", err)
 	}
+	cfg.SMTPPassword = ""
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("missing SMTP authentication validation error = nil")
+	}
+	cfg.SMTPPassword = "smtp-secret"
 	cfg.SMTPFrom = "invalid"
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("invalid SMTP_FROM validation error = nil")
