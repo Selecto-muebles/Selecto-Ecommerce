@@ -37,7 +37,7 @@ func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 			return
 		}
 
-		logger.Info(logging.EventProductCatalogListed, "products_count", len(products))
+		logger.Debug(logging.EventProductCatalogListed, "products_count", len(products))
 		c.JSON(http.StatusOK, products)
 	}
 }
