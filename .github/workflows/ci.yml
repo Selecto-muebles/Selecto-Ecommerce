@@ -34,9 +34,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.25.12"
           cache: true
       - run: go mod verify
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - name: Apply migrations twice
         run: |
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql -f migrations/005_product_merchandising.sql -f migrations/006_google_identity_and_shipping.sql -f migrations/007_order_delivery_preference.sql -f migrations/008_customer_account_and_notifications.sql -f migrations/009_email_outbox_due_index.sql
@@ -79,7 +80,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.25.12"
           cache: true
       - name: Apply migrations twice
         run: |
