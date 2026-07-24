@@ -1,17 +1,17 @@
 package handlers
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	postgresrepo "Selecto-Ecommerce/internal/repository/postgres"
+	paymentservice "Selecto-Ecommerce/internal/service/payments"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/money"
@@ -42,11 +42,8 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			return
 		}
 
-		newStatus := input.Status
-		if newStatus == "" {
-			newStatus = "paid"
-		}
-		if newStatus != "paid" && newStatus != "failed" && newStatus != "cancelled" {
+		newStatus, err := paymentservice.NormalizeStatus(input.Status)
+		if err != nil {
 			apperrors.BadRequest(c, "invalid status")
 			return
 		}
@@ -169,7 +166,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			return
 		}
 
-		recoveringPaidOrder := canRecoverPaidOrder(domain.OrderStatus(currentStatus), activePreferenceID)
+		recoveringPaidOrder := paymentservice.CanRecoverPaidOrder(domain.OrderStatus(currentStatus), activePreferenceID.Valid && activePreferenceID.String != "")
 		if !domain.CanTransitionOrder(domain.OrderStatus(currentStatus), domain.OrderStatusPaid) && !recoveringPaidOrder {
 			logger.Info(logging.EventPaymentWebhookIgnoredTransition, "payment_id", input.PaymentID, "order_id", orderID, "current_status", currentStatus, "requested_status", newStatus)
 			if err := tx.Commit(c); err != nil {
@@ -180,7 +177,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			return
 		}
 
-		if !amountMatches(input.Amount, orderTotal) {
+		if !paymentservice.AmountMatches(input.Amount, orderTotal) {
 			if input.Amount == nil {
 				logger.Warn(logging.EventPaymentWebhookAmountRejected, "payment_id", input.PaymentID, "order_id", orderID, "expected_cents", int64(orderTotal), "reason", "missing_amount")
 			} else {
@@ -199,7 +196,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		}
 
 		if recoveringPaidOrder {
-			if err := reserveOrderStock(c, tx, orderID); err != nil {
+			if err := postgresrepo.ReserveOrderStock(c, tx, orderID); err != nil {
 				logger.Error(logging.EventPaymentWebhookStockFailed, "payment_id", input.PaymentID, "order_id", orderID, "error", err)
 				c.JSON(http.StatusConflict, gin.H{"status": currentStatus, "reason": "stock_unavailable"})
 				return
@@ -268,89 +265,4 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 
 		c.JSON(http.StatusOK, gin.H{"status": newStatus})
 	}
-}
-
-func amountMatches(received *float64, expected money.Cents) bool {
-	if received == nil {
-		return false
-	}
-
-	return money.Cents(math.Round(*received*100)) == expected
-}
-
-func canRecoverPaidOrder(status domain.OrderStatus, activePreferenceID sql.NullString) bool {
-	if !activePreferenceID.Valid || activePreferenceID.String == "" {
-		return false
-	}
-
-	return status == domain.OrderStatusFailed || status == domain.OrderStatusCancelled
-}
-
-type orderStockItem struct {
-	productID int
-	quantity  int
-}
-
-func reserveOrderStock(ctx context.Context, tx pgx.Tx, orderID int) error {
-	return applyOrderStockItems(ctx, tx, orderID, func(current orderStockItem) error {
-		commandTag, err := tx.Exec(
-			ctx,
-			"UPDATE products SET stock = stock - $1 WHERE id=$2 AND stock >= $1",
-			current.quantity,
-			current.productID,
-		)
-		if err != nil {
-			return err
-		}
-		if commandTag.RowsAffected() == 0 {
-			return fmt.Errorf("insufficient stock for product_id=%d", current.productID)
-		}
-		return nil
-	})
-}
-
-func restoreOrderStock(ctx context.Context, tx pgx.Tx, orderID int) error {
-	return applyOrderStockItems(ctx, tx, orderID, func(current orderStockItem) error {
-		_, err := tx.Exec(
-			ctx,
-			"UPDATE products SET stock = stock + $1 WHERE id=$2",
-			current.quantity,
-			current.productID,
-		)
-		return err
-	})
-}
-
-func applyOrderStockItems(ctx context.Context, tx pgx.Tx, orderID int, apply func(orderStockItem) error) error {
-	rows, err := tx.Query(
-		ctx,
-		"SELECT product_id, quantity FROM order_items WHERE order_id=$1",
-		orderID,
-	)
-	if err != nil {
-		return err
-	}
-
-	items := make([]orderStockItem, 0)
-	for rows.Next() {
-		var current orderStockItem
-		if err := rows.Scan(&current.productID, &current.quantity); err != nil {
-			rows.Close()
-			return err
-		}
-		items = append(items, current)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
-
-	for _, current := range items {
-		if err := apply(current); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	catalogservice "Selecto-Ecommerce/internal/service/catalog"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
 
@@ -27,11 +27,7 @@ type productImageResponse struct {
 	SortOrder int    `json:"sort_order"`
 }
 
-type productOption struct {
-	Name      string   `json:"name"`
-	Values    []string `json:"values"`
-	SortOrder int      `json:"sort_order"`
-}
+type productOption = catalogservice.Option
 
 func productImages(ctx context.Context, db *database.DB, productID int) ([]productImageResponse, error) {
 	rows, err := db.Pool.Query(ctx, `SELECT id, alt_text, sort_order FROM product_images WHERE product_id=$1 ORDER BY sort_order, id`, productID)
@@ -114,44 +110,6 @@ func productOptionsByProduct(ctx context.Context, db *database.DB, productIDs []
 		result[productID] = append(result[productID], item)
 	}
 	return result, rows.Err()
-}
-
-func normalizeProductOptions(options []productOption) ([]productOption, error) {
-	seenNames := map[string]struct{}{}
-	result := make([]productOption, 0, len(options))
-	for index, option := range options {
-		name := strings.TrimSpace(option.Name)
-		if name == "" || len(name) > 60 {
-			return nil, errors.New("option name must be valid")
-		}
-		key := strings.ToLower(name)
-		if _, exists := seenNames[key]; exists {
-			return nil, errors.New("option names must be unique")
-		}
-		seenNames[key] = struct{}{}
-		seenValues := map[string]struct{}{}
-		values := make([]string, 0, len(option.Values))
-		for _, raw := range option.Values {
-			value := strings.TrimSpace(raw)
-			if value == "" || len(value) > 80 {
-				return nil, errors.New("option values must be valid")
-			}
-			valueKey := strings.ToLower(value)
-			if _, exists := seenValues[valueKey]; exists {
-				continue
-			}
-			seenValues[valueKey] = struct{}{}
-			values = append(values, value)
-		}
-		if len(values) < 1 || len(values) > 30 {
-			return nil, errors.New("each option must contain between 1 and 30 values")
-		}
-		result = append(result, productOption{Name: name, Values: values, SortOrder: index})
-	}
-	if len(result) > 5 {
-		return nil, errors.New("a product can contain at most 5 options")
-	}
-	return result, nil
 }
 
 func replaceProductOptions(ctx context.Context, tx pgx.Tx, productID int, options []productOption) error {
@@ -317,44 +275,4 @@ func AdminDeleteProductImageHandler(db *database.DB) gin.HandlerFunc {
 		_ = writeAudit(c, db, adminActor(c), "product_image_deleted", "product", productID, gin.H{"image_id": utils.EncodeID(imageID)})
 		c.Status(http.StatusNoContent)
 	}
-}
-
-func validateSelectedOptions(ctx context.Context, tx pgx.Tx, productID int, selected map[string]string) error {
-	rows, err := tx.Query(ctx, `SELECT name,values FROM product_options WHERE product_id=$1`, productID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	allowed := map[string]map[string]struct{}{}
-	for rows.Next() {
-		var name string
-		var raw []byte
-		var values []string
-		if err := rows.Scan(&name, &raw); err != nil {
-			return err
-		}
-		if err := json.Unmarshal(raw, &values); err != nil {
-			return err
-		}
-		allowed[name] = map[string]struct{}{}
-		for _, value := range values {
-			allowed[name][value] = struct{}{}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if len(selected) != len(allowed) {
-		return fmt.Errorf("all product options must be selected")
-	}
-	for name, value := range selected {
-		values, exists := allowed[name]
-		if !exists {
-			return fmt.Errorf("invalid product option")
-		}
-		if _, exists := values[value]; !exists {
-			return fmt.Errorf("invalid product option value")
-		}
-	}
-	return nil
 }
