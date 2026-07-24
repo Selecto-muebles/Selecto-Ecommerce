@@ -2,21 +2,19 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	shippingservice "Selecto-Ecommerce/internal/service/shipping"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
 
@@ -164,7 +162,8 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 			apperrors.BadRequest(c, "invalid shipment payload")
 			return
 		}
-		if input.empty() {
+		update := input.serviceUpdate()
+		if update.Empty() {
 			apperrors.BadRequest(c, "shipment update must contain at least one field")
 			return
 		}
@@ -200,7 +199,10 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 			return
 		}
 
-		next, err := normalizeShipmentUpdate(current, input)
+		next, err := shippingservice.Normalize(shippingservice.Current{
+			Status: current.Status, Carrier: current.Carrier, TrackingNumber: current.TrackingNumber,
+			TrackingURL: current.TrackingURL, EstimatedDeliveryAt: current.EstimatedDeliveryAt, CustomerNote: current.CustomerNote,
+		}, update)
 		if err != nil {
 			apperrors.BadRequest(c, err.Error())
 			return
@@ -235,7 +237,7 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 			apperrors.Internal(c)
 			return
 		}
-		eventVersion := shipmentEventVersion(next)
+		eventVersion := shippingservice.EventVersion(next)
 		if err := enqueueShipmentStatusEmail(c, tx, cfg, orderID, eventVersion, customerEmail, next.Status, next.TrackingURL); err != nil {
 			apperrors.Internal(c)
 			return
@@ -255,72 +257,9 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 	}
 }
 
-func shipmentEventVersion(shipment normalizedShipmentUpdate) string {
-	payload, _ := json.Marshal(shipment)
-	digest := sha256.Sum256(payload)
-	return hex.EncodeToString(digest[:8])
-}
-
-func (input UpdateShipmentInput) empty() bool {
-	return input.Status == nil && input.Carrier == nil && input.TrackingNumber == nil && input.TrackingURL == nil && input.EstimatedDeliveryAt == nil && input.CustomerNote == nil
-}
-
-type normalizedShipmentUpdate struct {
-	Status              string
-	Carrier             string
-	TrackingNumber      string
-	TrackingURL         string
-	EstimatedDeliveryAt *time.Time
-	CustomerNote        string
-}
-
-func normalizeShipmentUpdate(current ShipmentResponse, input UpdateShipmentInput) (normalizedShipmentUpdate, error) {
-	next := normalizedShipmentUpdate{
-		Status:              current.Status,
-		Carrier:             current.Carrier,
-		TrackingNumber:      current.TrackingNumber,
-		TrackingURL:         current.TrackingURL,
-		EstimatedDeliveryAt: current.EstimatedDeliveryAt,
-		CustomerNote:        current.CustomerNote,
+func (input UpdateShipmentInput) serviceUpdate() shippingservice.Update {
+	return shippingservice.Update{
+		Status: input.Status, Carrier: input.Carrier, TrackingNumber: input.TrackingNumber,
+		TrackingURL: input.TrackingURL, EstimatedDeliveryAt: input.EstimatedDeliveryAt, CustomerNote: input.CustomerNote,
 	}
-	if input.Status != nil {
-		next.Status = strings.TrimSpace(*input.Status)
-	}
-	if !domain.ShipmentStatus(next.Status).Valid() {
-		return next, errors.New("invalid shipment status")
-	}
-	if input.Carrier != nil {
-		next.Carrier = strings.TrimSpace(*input.Carrier)
-	}
-	if input.TrackingNumber != nil {
-		next.TrackingNumber = strings.TrimSpace(*input.TrackingNumber)
-	}
-	if input.TrackingURL != nil {
-		next.TrackingURL = strings.TrimSpace(*input.TrackingURL)
-	}
-	if input.CustomerNote != nil {
-		next.CustomerNote = strings.TrimSpace(*input.CustomerNote)
-	}
-	if len(next.Carrier) > 120 || len(next.TrackingNumber) > 160 || len(next.TrackingURL) > 1000 || len(next.CustomerNote) > 1000 {
-		return next, errors.New("shipment field exceeds maximum length")
-	}
-	if next.TrackingURL != "" {
-		parsed, err := url.ParseRequestURI(next.TrackingURL)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-			return next, errors.New("tracking_url must be an absolute HTTPS URL")
-		}
-	}
-	if input.EstimatedDeliveryAt != nil {
-		raw := strings.TrimSpace(*input.EstimatedDeliveryAt)
-		if raw == "" {
-			next.EstimatedDeliveryAt = nil
-		} else {
-			parsed, err := time.Parse(time.RFC3339, raw)
-			if err != nil {
-				return next, errors.New("estimated_delivery_at must use RFC3339")
-			}
-			next.EstimatedDeliveryAt = &parsed
-		}
-	}
-	return next, nil
 }

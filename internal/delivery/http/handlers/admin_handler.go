@@ -40,6 +40,6 @@ func GetMetricsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 			"total_revenue": totalRevenue,
 			"total_orders":  totalOrders,
 		})
-		logger.Info(logging.EventAdminMetricsRequested, "total_orders", totalOrders)
+		logger.Debug(logging.EventAdminMetricsRequested, "total_orders", totalOrders)
 	}
 }

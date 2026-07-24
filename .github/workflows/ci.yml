@@ -50,6 +50,8 @@ jobs:
             printf 'Files requiring gofmt:\n%s\n' "$unformatted"
             exit 1
           fi
+      - name: Enforce source file size
+        run: bash scripts/check_source_size.sh
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
       - uses: actions/upload-artifact@v4

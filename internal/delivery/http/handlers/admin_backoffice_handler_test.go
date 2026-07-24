@@ -9,19 +9,20 @@ import (
 	"testing"
 
 	"Selecto-Ecommerce/internal/config"
+	adminservice "Selecto-Ecommerce/internal/service/admin"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 func TestAdminSortsAreWhitelisted(t *testing.T) {
-	if got := productSort("drop table products"); got != "created_at DESC, id DESC" {
+	if got := adminservice.ProductSort("drop table products"); got != "created_at DESC, id DESC" {
 		t.Fatalf("productSort unsafe value = %q", got)
 	}
-	if got := orderSort("drop table orders"); got != "o.created_at DESC, o.id DESC" {
+	if got := adminservice.OrderSort("drop table orders"); got != "o.created_at DESC, o.id DESC" {
 		t.Fatalf("orderSort unsafe value = %q", got)
 	}
-	if got := customerSort("drop table users"); got != "u.id DESC" {
+	if got := adminservice.CustomerSort("drop table users"); got != "u.id DESC" {
 		t.Fatalf("customerSort unsafe value = %q", got)
 	}
 }

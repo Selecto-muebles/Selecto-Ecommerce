@@ -14,6 +14,7 @@ import (
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	orderservice "Selecto-Ecommerce/internal/service/orders"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -21,13 +22,13 @@ import (
 
 func TestParseRequestedDeliveryDate(t *testing.T) {
 	now := time.Date(2026, time.July, 19, 15, 0, 0, 0, time.UTC)
-	if value, err := parseRequestedDeliveryDate("2026-07-20", now); err != nil || value.Format("2006-01-02") != "2026-07-20" {
+	if value, err := orderservice.ParseRequestedDeliveryDate("2026-07-20", now); err != nil || value.Format("2006-01-02") != "2026-07-20" {
 		t.Fatalf("valid date = %v/%v", value, err)
 	}
-	if _, err := parseRequestedDeliveryDate("2026-07-18", now); err == nil {
+	if _, err := orderservice.ParseRequestedDeliveryDate("2026-07-18", now); err == nil {
 		t.Fatal("past delivery date must be rejected")
 	}
-	if _, err := parseRequestedDeliveryDate("20/07/2026", now); err == nil {
+	if _, err := orderservice.ParseRequestedDeliveryDate("20/07/2026", now); err == nil {
 		t.Fatal("non ISO delivery date must be rejected")
 	}
 }
