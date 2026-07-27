@@ -17,6 +17,7 @@ type Config struct {
 	Port                    string
 	AppEnv                  string
 	DatabaseURL             string
+	DatabaseSchema          string
 	PaymentsServiceURL      string
 	JWTSecret               string
 	JWTTTL                  time.Duration
@@ -51,6 +52,7 @@ func LoadConfig() *Config {
 		Port:                    getEnv("PORT", "8080"),
 		AppEnv:                  getEnv("APP_ENV", "development"),
 		DatabaseURL:             getEnv("DATABASE_URL", ""),
+		DatabaseSchema:          getNonEmptyEnv("DB_SCHEMA", "public"),
 		PaymentsServiceURL:      strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
 		JWTSecret:               getEnv("JWT_SECRET", ""),
 		JWTTTL:                  getDurationEnv("JWT_TTL", 72*time.Hour),
@@ -82,6 +84,9 @@ func LoadConfig() *Config {
 func (c *Config) Validate() error {
 	if c.DatabaseURL == "" {
 		return errors.New("DATABASE_URL is required")
+	}
+	if c.DatabaseSchema != "public" && c.DatabaseSchema != "commerce" {
+		return errors.New("DB_SCHEMA must be public or commerce")
 	}
 	if c.JWTSecret == "" {
 		return errors.New("JWT_SECRET is required")
@@ -174,6 +179,14 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getNonEmptyEnv(key, fallback string) string {
+	value := strings.TrimSpace(getEnv(key, ""))
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func getDurationEnv(key string, fallback time.Duration) time.Duration {

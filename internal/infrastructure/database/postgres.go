@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"Selecto-Ecommerce/internal/shared/logging"
@@ -19,6 +21,7 @@ type PoolConfig struct {
 	MinConns        int32
 	MaxConnLifetime time.Duration
 	MaxConnIdleTime time.Duration
+	ExpectedSchema  string
 }
 
 func NewPostgresPool(databaseURL string, cfg PoolConfig, logger *slog.Logger) (*DB, error) {
@@ -45,7 +48,29 @@ func NewPostgresPool(databaseURL string, cfg PoolConfig, logger *slog.Logger) (*
 		return nil, err
 	}
 
-	logger.Info(logging.EventDatabaseConnected, "max_connections", cfg.MaxConns, "min_connections", cfg.MinConns)
+	expectedSchema := strings.TrimSpace(cfg.ExpectedSchema)
+	if expectedSchema == "" {
+		expectedSchema = "public"
+	}
+	var currentSchema string
+	if err := pool.QueryRow(context.Background(), "SELECT current_schema()").Scan(&currentSchema); err != nil {
+		pool.Close()
+		logger.Error(logging.EventDatabaseHealthCheckFailed, "error", err)
+		return nil, fmt.Errorf("resolve current database schema: %w", err)
+	}
+	if currentSchema != expectedSchema {
+		pool.Close()
+		err := fmt.Errorf("unexpected database schema %q, expected %q", currentSchema, expectedSchema)
+		logger.Error(logging.EventDatabaseConnectionFailed, "error", err)
+		return nil, err
+	}
+
+	logger.Info(
+		logging.EventDatabaseConnected,
+		"schema", currentSchema,
+		"max_connections", cfg.MaxConns,
+		"min_connections", cfg.MinConns,
+	)
 
 	return &DB{
 		Pool: pool,

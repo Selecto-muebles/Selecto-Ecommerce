@@ -40,6 +40,7 @@ func main() {
 		MinConns:        int32(cfg.DatabaseMinConns),
 		MaxConnLifetime: cfg.DatabaseMaxConnLifetime,
 		MaxConnIdleTime: cfg.DatabaseMaxConnIdleTime,
+		ExpectedSchema:  cfg.DatabaseSchema,
 	}, logger)
 	if err != nil {
 		os.Exit(1)
