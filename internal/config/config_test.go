@@ -11,12 +11,16 @@ func TestLoadConfigScalabilityDefaults(t *testing.T) {
 		"DB_MIN_CONNS",
 		"DB_MAX_CONN_LIFETIME",
 		"DB_MAX_CONN_IDLE_TIME",
+		"DB_SCHEMA",
 		"RELEASE_WORKER_BATCH_SIZE",
 		"RELEASE_WORKER_MAX_BATCHES",
 	} {
 		t.Setenv(key, "")
 	}
 	cfg := LoadConfig()
+	if cfg.DatabaseSchema != "public" {
+		t.Fatalf("unexpected database schema default: %q", cfg.DatabaseSchema)
+	}
 	if cfg.DatabaseMaxConns != 20 || cfg.DatabaseMinConns != 2 || cfg.ReleaseWorkerBatchSize != 100 || cfg.ReleaseWorkerMaxBatches != 10 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
@@ -28,6 +32,7 @@ func TestLoadConfigScalabilityDefaults(t *testing.T) {
 func TestValidateRejectsUnsafePoolAndWorkerLimits(t *testing.T) {
 	base := Config{
 		DatabaseURL:             "postgres://example",
+		DatabaseSchema:          "public",
 		JWTSecret:               "test-secret-with-at-least-32-characters",
 		JWTTTL:                  time.Hour,
 		RateLimitPerMinute:      120,
@@ -53,12 +58,18 @@ func TestValidateRejectsUnsafePoolAndWorkerLimits(t *testing.T) {
 	if err := base.Validate(); err == nil {
 		t.Fatal("unsafe worker validation error = nil")
 	}
+	base.ReleaseWorkerBatchSize = 100
+	base.DatabaseSchema = "payments"
+	if err := base.Validate(); err == nil {
+		t.Fatal("unexpected database schema validation error = nil")
+	}
 }
 
 func TestValidateRequiresOperationalEmailInProduction(t *testing.T) {
 	cfg := Config{
 		AppEnv:                  "production",
 		DatabaseURL:             "postgres://example",
+		DatabaseSchema:          "public",
 		PaymentsServiceURL:      "http://payments:8081",
 		JWTSecret:               "test-secret-with-at-least-32-characters",
 		JWTTTL:                  time.Hour,
