@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"Selecto-Ecommerce/internal/config"
@@ -24,6 +25,21 @@ func TestAdminSortsAreWhitelisted(t *testing.T) {
 	}
 	if got := adminservice.CustomerSort("drop table users"); got != "u.id DESC" {
 		t.Fatalf("customerSort unsafe value = %q", got)
+	}
+	tests := map[string]string{
+		"product name":       adminservice.ProductSort("name"),
+		"product price":      adminservice.ProductSort("price"),
+		"product stock":      adminservice.ProductSort("stock"),
+		"product created_at": adminservice.ProductSort("created_at"),
+		"order created_at":   adminservice.OrderSort("created_at"),
+		"order total":        adminservice.OrderSort("total"),
+		"customer email":     adminservice.CustomerSort("email"),
+		"customer name":      adminservice.CustomerSort("name"),
+	}
+	for name, sort := range tests {
+		if !strings.Contains(sort, "id ") {
+			t.Errorf("%s sort %q has no deterministic id tie-breaker", name, sort)
+		}
 	}
 }
 

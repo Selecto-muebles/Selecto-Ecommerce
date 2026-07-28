@@ -20,13 +20,13 @@ func allowedSort(value string, allowed map[string]string, fallback string) strin
 }
 
 var productSorts = map[string]string{
-	"name": "name ASC", "price": "price ASC", "stock": "stock ASC", "created_at": "created_at ASC",
+	"name": "name ASC, id ASC", "price": "price ASC, id ASC", "stock": "stock ASC, id ASC", "created_at": "created_at ASC, id ASC",
 }
 
 var orderSorts = map[string]string{
-	"created_at": "o.created_at ASC", "total": "o.total DESC",
+	"created_at": "o.created_at ASC, o.id ASC", "total": "o.total DESC, o.id DESC",
 }
 
 var customerSorts = map[string]string{
-	"email": "u.email ASC", "name": "u.last_name ASC, u.first_name ASC",
+	"email": "u.email ASC, u.id ASC", "name": "u.last_name ASC, u.first_name ASC, u.id ASC",
 }
