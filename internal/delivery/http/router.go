@@ -10,6 +10,7 @@ import (
 	"Selecto-Ecommerce/internal/delivery/http/handlers"
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/jobs"
 	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/gin-contrib/cors"
@@ -127,20 +128,8 @@ func corsConfig(cfg *config.Config) cors.Config {
 func StartExpiredOrderWorker(ctx context.Context, db *database.DB, cfg *config.Config, logger *slog.Logger) {
 	go func() {
 		process := func() {
-			var totalReleased int64
-			for batch := 0; batch < cfg.ReleaseWorkerMaxBatches; batch++ {
-				released, err := handlers.ReleaseExpiredPendingOrdersWithAudit(ctx, db, cfg.OrderPendingTTL, cfg.ReleaseWorkerBatchSize)
-				if err != nil {
-					logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
-					return
-				}
-				totalReleased += released
-				if released < int64(cfg.ReleaseWorkerBatchSize) {
-					break
-				}
-			}
-			if totalReleased > 0 {
-				logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", totalReleased)
+			if err := jobs.Run(ctx, jobs.ExpireOrders, db, cfg, logger); err != nil {
+				logger.Error(logging.EventExpiredOrderReleaseFailed, "error", err)
 			}
 		}
 		process()

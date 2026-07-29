@@ -33,7 +33,7 @@ func NewWorker(db *database.DB, mailer Mailer, logger *slog.Logger, interval tim
 
 func (w *Worker) Start(ctx context.Context) {
 	go func() {
-		w.process(ctx)
+		w.processAndLog(ctx)
 		ticker := time.NewTicker(w.interval)
 		defer ticker.Stop()
 		for {
@@ -41,36 +41,47 @@ func (w *Worker) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				w.process(ctx)
+				w.processAndLog(ctx)
 			}
 		}
 	}()
 }
 
-func (w *Worker) process(ctx context.Context) {
+func (w *Worker) processAndLog(ctx context.Context) {
+	if _, err := w.ProcessBatch(ctx); err != nil {
+		w.logger.Error("email_outbox_batch_failed", "error", err)
+	}
+}
+
+func (w *Worker) ProcessBatch(ctx context.Context) (int, error) {
+	processed := 0
+	var firstError error
 	for i := 0; i < w.batchSize; i++ {
 		current, ok, err := w.claim(ctx)
 		if err != nil {
-			w.logger.Error("email_outbox_claim_failed", "error", err)
-			return
+			return processed, err
 		}
 		if !ok {
-			return
+			return processed, firstError
 		}
+		processed++
 		subject, body, err := Render(current.Template, current.Payload)
 		if err == nil {
 			err = w.mailer.Send(ctx, current.Recipient, subject, body)
 		}
 		if err != nil {
 			w.fail(ctx, current.ID, err)
+			if firstError == nil {
+				firstError = err
+			}
 			continue
 		}
 		if _, err := w.db.Pool.Exec(ctx, `UPDATE email_outbox SET status='sent', sent_at=NOW(), locked_at=NULL, last_error='', payload='{}'::jsonb, updated_at=NOW() WHERE id=$1`, current.ID); err != nil {
-			w.logger.Error("email_outbox_complete_failed", "email_id", current.ID, "error", err)
-			continue
+			return processed, err
 		}
 		w.logger.Info("transactional_email_sent", "email_id", current.ID, "template", current.Template)
 	}
+	return processed, firstError
 }
 
 func (w *Worker) claim(ctx context.Context) (queuedEmail, bool, error) {
