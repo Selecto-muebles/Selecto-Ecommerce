@@ -43,6 +43,8 @@ type Config struct {
 	SMTPTLSMode             string
 	EmailWorkerInterval     time.Duration
 	EmailWorkerBatchSize    int
+	EmbeddedWorkers         bool
+	JobTimeout              time.Duration
 }
 
 func LoadConfig() *Config {
@@ -78,15 +80,14 @@ func LoadConfig() *Config {
 		SMTPTLSMode:             strings.ToLower(strings.TrimSpace(getEnv("SMTP_TLS_MODE", "starttls"))),
 		EmailWorkerInterval:     getDurationEnv("EMAIL_WORKER_INTERVAL", 10*time.Second),
 		EmailWorkerBatchSize:    getIntEnv("EMAIL_WORKER_BATCH_SIZE", 20),
+		EmbeddedWorkers:         getBoolEnv("RUN_EMBEDDED_WORKERS", getEnv("APP_ENV", "development") != "production"),
+		JobTimeout:              getDurationEnv("JOB_TIMEOUT", 5*time.Minute),
 	}
 }
 
 func (c *Config) Validate() error {
-	if c.DatabaseURL == "" {
-		return errors.New("DATABASE_URL is required")
-	}
-	if c.DatabaseSchema != "public" && c.DatabaseSchema != "commerce" {
-		return errors.New("DB_SCHEMA must be public or commerce")
+	if err := c.validateDatabase(); err != nil {
+		return err
 	}
 	if c.JWTSecret == "" {
 		return errors.New("JWT_SECRET is required")
@@ -100,7 +101,7 @@ func (c *Config) Validate() error {
 	if c.OrderPendingTTL <= 0 {
 		return errors.New("ORDER_PENDING_TTL must be positive")
 	}
-	if c.ReleaseWorkerInterval <= 0 {
+	if c.EmbeddedWorkers && c.ReleaseWorkerInterval <= 0 {
 		return errors.New("RELEASE_WORKER_INTERVAL must be positive")
 	}
 	if c.PaymentsRequestTimeout <= 0 || c.PaymentsRequestTimeout >= 30*time.Second {
@@ -108,15 +109,6 @@ func (c *Config) Validate() error {
 	}
 	if c.RateLimitPerMinute <= 0 {
 		return errors.New("RATE_LIMIT_PER_MINUTE must be positive")
-	}
-	if c.DatabaseMaxConns <= 0 || c.DatabaseMaxConns > 200 {
-		return errors.New("DB_MAX_CONNS must be between 1 and 200")
-	}
-	if c.DatabaseMinConns < 0 || c.DatabaseMinConns > c.DatabaseMaxConns {
-		return errors.New("DB_MIN_CONNS must be between 0 and DB_MAX_CONNS")
-	}
-	if c.DatabaseMaxConnLifetime <= 0 || c.DatabaseMaxConnIdleTime <= 0 {
-		return errors.New("database connection lifetimes must be positive")
 	}
 	if c.ReleaseWorkerBatchSize <= 0 || c.ReleaseWorkerBatchSize > 1000 {
 		return errors.New("RELEASE_WORKER_BATCH_SIZE must be between 1 and 1000")
@@ -134,6 +126,9 @@ func (c *Config) Validate() error {
 		return errors.New("email worker settings are invalid")
 	}
 	if c.AppEnv == "production" {
+		if c.EmbeddedWorkers {
+			return errors.New("RUN_EMBEDDED_WORKERS must be false in production")
+		}
 		if c.StorefrontURL == "" {
 			return errors.New("STOREFRONT_URL is required in production")
 		}
@@ -149,27 +144,75 @@ func (c *Config) Validate() error {
 		if c.GoogleClientID == "" {
 			return errors.New("GOOGLE_CLIENT_ID is required in production")
 		}
-		if c.SMTPHost == "" || c.SMTPUsername == "" || c.SMTPPassword == "" || c.SMTPFrom == "" {
-			return errors.New("SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM are required in production")
-		}
-		if c.SMTPPort <= 0 {
-			return errors.New("SMTP_PORT must be configured in production")
-		}
-		if _, err := mail.ParseAddress(c.SMTPFrom); err != nil {
-			return errors.New("SMTP_FROM must be a valid email address")
-		}
-		if c.EmailWorkerInterval <= 0 || c.EmailWorkerBatchSize <= 0 {
-			return errors.New("email worker must be enabled in production")
-		}
-		if c.SMTPTLSMode == "none" {
-			return errors.New("SMTP_TLS_MODE cannot be none in production")
-		}
 		if !strings.HasPrefix(c.StorefrontURL, "https://") {
 			return errors.New("STOREFRONT_URL must use HTTPS in production")
 		}
 		if allowsAllOrigins(c.CORSAllowedOrigins) {
 			return errors.New("CORS_ALLOWED_ORIGINS cannot allow all origins in production")
 		}
+	}
+	return nil
+}
+
+func (c *Config) ValidateJob(name string) error {
+	if err := c.validateDatabase(); err != nil {
+		return err
+	}
+	if c.JobTimeout <= 0 || c.JobTimeout > time.Hour {
+		return errors.New("JOB_TIMEOUT must be positive and at most 1h")
+	}
+	switch name {
+	case "expire-orders":
+		if c.OrderPendingTTL <= 0 || c.ReleaseWorkerBatchSize <= 0 || c.ReleaseWorkerBatchSize > 1000 {
+			return errors.New("expired order job settings are invalid")
+		}
+		if c.ReleaseWorkerMaxBatches <= 0 || c.ReleaseWorkerMaxBatches > 100 {
+			return errors.New("RELEASE_WORKER_MAX_BATCHES must be between 1 and 100")
+		}
+	case "email-outbox":
+		if c.EmailWorkerBatchSize <= 0 || c.EmailWorkerBatchSize > 100 {
+			return errors.New("EMAIL_WORKER_BATCH_SIZE must be between 1 and 100")
+		}
+		if err := c.validateSMTP(); err != nil {
+			return err
+		}
+	default:
+		return errors.New("unknown job")
+	}
+	return nil
+}
+
+func (c *Config) validateDatabase() error {
+	if c.DatabaseURL == "" {
+		return errors.New("DATABASE_URL is required")
+	}
+	if c.DatabaseSchema != "public" && c.DatabaseSchema != "commerce" {
+		return errors.New("DB_SCHEMA must be public or commerce")
+	}
+	if c.DatabaseMaxConns <= 0 || c.DatabaseMaxConns > 200 {
+		return errors.New("DB_MAX_CONNS must be between 1 and 200")
+	}
+	if c.DatabaseMinConns < 0 || c.DatabaseMinConns > c.DatabaseMaxConns {
+		return errors.New("DB_MIN_CONNS must be between 0 and DB_MAX_CONNS")
+	}
+	if c.DatabaseMaxConnLifetime <= 0 || c.DatabaseMaxConnIdleTime <= 0 {
+		return errors.New("database connection lifetimes must be positive")
+	}
+	return nil
+}
+
+func (c *Config) validateSMTP() error {
+	if c.SMTPHost == "" || c.SMTPUsername == "" || c.SMTPPassword == "" || c.SMTPFrom == "" {
+		return errors.New("SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM are required")
+	}
+	if c.SMTPPort <= 0 {
+		return errors.New("SMTP_PORT must be configured")
+	}
+	if _, err := mail.ParseAddress(c.SMTPFrom); err != nil {
+		return errors.New("SMTP_FROM must be a valid email address")
+	}
+	if c.SMTPTLSMode == "none" {
+		return errors.New("SMTP_TLS_MODE cannot be none")
 	}
 	return nil
 }
@@ -207,6 +250,18 @@ func getIntEnv(key string, fallback int) int {
 		return fallback
 	}
 	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func getBoolEnv(key string, fallback bool) bool {
+	raw := strings.TrimSpace(getEnv(key, ""))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(raw)
 	if err != nil {
 		return fallback
 	}

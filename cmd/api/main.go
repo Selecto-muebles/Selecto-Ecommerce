@@ -14,6 +14,7 @@ import (
 	httpDelivery "Selecto-Ecommerce/internal/delivery/http"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
+	"Selecto-Ecommerce/internal/jobs"
 	"Selecto-Ecommerce/internal/shared/logging"
 )
 
@@ -30,7 +31,17 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg := config.LoadConfig()
-	if err := cfg.Validate(); err != nil {
+	jobName, jobMode, err := parseCommand(os.Args[1:])
+	if err != nil {
+		logger.Error(logging.EventApplicationConfigurationInvalid, "error", err)
+		os.Exit(2)
+	}
+	if jobMode {
+		err = cfg.ValidateJob(jobName)
+	} else {
+		err = cfg.Validate()
+	}
+	if err != nil {
 		logger.Error(logging.EventApplicationConfigurationInvalid, "error", err)
 		os.Exit(1)
 	}
@@ -49,13 +60,26 @@ func main() {
 
 	appCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	httpDelivery.StartExpiredOrderWorker(appCtx, db, cfg, logger)
-	if cfg.SMTPHost != "" && cfg.SMTPFrom != "" {
+	if jobMode {
+		jobCtx, cancel := context.WithTimeout(appCtx, cfg.JobTimeout)
+		defer cancel()
+		if err := jobs.Run(jobCtx, jobName, db, cfg, logger); err != nil {
+			logger.Error("serverless_job_failed", "job", jobName, "error", err)
+			db.Pool.Close()
+			os.Exit(1)
+		}
+		logger.Info("serverless_job_completed", "job", jobName)
+		return
+	}
+	if cfg.EmbeddedWorkers {
+		httpDelivery.StartExpiredOrderWorker(appCtx, db, cfg, logger)
+	}
+	if cfg.EmbeddedWorkers && cfg.SMTPHost != "" && cfg.SMTPFrom != "" {
 		mailinfra.NewWorker(db, mailinfra.NewSMTPMailer(mailinfra.SMTPConfig{
 			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername,
 			Password: cfg.SMTPPassword, From: cfg.SMTPFrom, TLSMode: cfg.SMTPTLSMode,
 		}), logger, cfg.EmailWorkerInterval, cfg.EmailWorkerBatchSize).Start(appCtx)
-	} else {
+	} else if cfg.EmbeddedWorkers {
 		logger.Warn("transactional_email_disabled", "reason", "SMTP is not configured")
 	}
 	router := httpDelivery.SetupRouter(db, cfg, logger)
@@ -84,6 +108,16 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func parseCommand(args []string) (string, bool, error) {
+	if len(args) == 0 {
+		return "", false, nil
+	}
+	if len(args) == 2 && args[0] == "job" && (args[1] == jobs.ExpireOrders || args[1] == jobs.EmailOutbox) {
+		return args[1], true, nil
+	}
+	return "", false, fmt.Errorf("usage: selecto-ecommerce [job expire-orders|job email-outbox]")
 }
 
 func runHealthcheck() {

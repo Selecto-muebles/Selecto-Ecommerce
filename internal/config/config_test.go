@@ -14,6 +14,8 @@ func TestLoadConfigScalabilityDefaults(t *testing.T) {
 		"DB_SCHEMA",
 		"RELEASE_WORKER_BATCH_SIZE",
 		"RELEASE_WORKER_MAX_BATCHES",
+		"RUN_EMBEDDED_WORKERS",
+		"JOB_TIMEOUT",
 	} {
 		t.Setenv(key, "")
 	}
@@ -26,6 +28,9 @@ func TestLoadConfigScalabilityDefaults(t *testing.T) {
 	}
 	if cfg.DatabaseMaxConnLifetime != 30*time.Minute || cfg.DatabaseMaxConnIdleTime != 5*time.Minute {
 		t.Fatalf("unexpected connection lifetimes: %+v", cfg)
+	}
+	if !cfg.EmbeddedWorkers || cfg.JobTimeout != 5*time.Minute {
+		t.Fatalf("unexpected runtime defaults: %+v", cfg)
 	}
 }
 
@@ -65,7 +70,7 @@ func TestValidateRejectsUnsafePoolAndWorkerLimits(t *testing.T) {
 	}
 }
 
-func TestValidateRequiresOperationalEmailInProduction(t *testing.T) {
+func TestValidateEmailJobRequiresOperationalSMTP(t *testing.T) {
 	cfg := Config{
 		AppEnv:                  "production",
 		DatabaseURL:             "postgres://example",
@@ -95,22 +100,50 @@ func TestValidateRequiresOperationalEmailInProduction(t *testing.T) {
 		SMTPTLSMode:             "starttls",
 		EmailWorkerInterval:     10 * time.Second,
 		EmailWorkerBatchSize:    20,
+		JobTimeout:              5 * time.Minute,
 	}
-	if err := cfg.Validate(); err != nil {
+	cfg.EmbeddedWorkers = false
+	if err := cfg.ValidateJob("email-outbox"); err != nil {
 		t.Fatalf("production email config validation error = %v", err)
 	}
 	cfg.SMTPPassword = ""
-	if err := cfg.Validate(); err == nil {
+	if err := cfg.ValidateJob("email-outbox"); err == nil {
 		t.Fatal("missing SMTP authentication validation error = nil")
 	}
 	cfg.SMTPPassword = "smtp-secret"
 	cfg.SMTPFrom = "invalid"
-	if err := cfg.Validate(); err == nil {
+	if err := cfg.ValidateJob("email-outbox"); err == nil {
 		t.Fatal("invalid SMTP_FROM validation error = nil")
 	}
 	cfg.SMTPFrom = "ventas@tienda.example"
 	cfg.EmailWorkerBatchSize = 0
-	if err := cfg.Validate(); err == nil {
+	if err := cfg.ValidateJob("email-outbox"); err == nil {
 		t.Fatal("disabled production email worker validation error = nil")
+	}
+}
+
+func TestValidateProductionAPIDisablesEmbeddedWorkersWithoutSMTP(t *testing.T) {
+	cfg := productionAPIConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("production API validation error = %v", err)
+	}
+	cfg.EmbeddedWorkers = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("embedded production workers validation error = nil")
+	}
+}
+
+func productionAPIConfig() Config {
+	return Config{
+		AppEnv: "production", DatabaseURL: "postgres://example", DatabaseSchema: "commerce",
+		PaymentsServiceURL: "https://payments.example", JWTSecret: "test-secret-with-at-least-32-characters",
+		JWTTTL: time.Hour, GoogleClientID: "client.apps.googleusercontent.com",
+		InternalWebhookSecret: "internal-secret-with-at-least-32-chars",
+		CORSAllowedOrigins:    []string{"https://tienda.example"}, RateLimitPerMinute: 120,
+		OrderPendingTTL: 15 * time.Minute, PaymentsRequestTimeout: 27 * time.Second,
+		DatabaseMaxConns: 10, DatabaseMinConns: 0, DatabaseMaxConnLifetime: 30 * time.Minute,
+		DatabaseMaxConnIdleTime: 5 * time.Minute, ReleaseWorkerBatchSize: 100,
+		ReleaseWorkerMaxBatches: 10, StorefrontURL: "https://tienda.example",
+		EmailWorkerBatchSize: 20, JobTimeout: 5 * time.Minute,
 	}
 }
