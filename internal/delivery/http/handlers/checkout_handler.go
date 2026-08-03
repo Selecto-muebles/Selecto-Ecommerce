@@ -25,7 +25,7 @@ type CheckoutRequest struct {
 func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
 	service := checkoutservice.NewService(
 		postgresrepo.NewCheckoutRepository(db, cfg),
-		paymentsinfra.NewClient(cfg.PaymentsServiceURL, cfg.PaymentsRequestTimeout),
+		paymentsinfra.NewClient(cfg.PaymentsServiceURL, cfg.PaymentsRequestTimeout, cfg.InternalWebhookSecret, cfg.PaymentsIDTokenAudience),
 		logger,
 	)
 	return func(c *gin.Context) {

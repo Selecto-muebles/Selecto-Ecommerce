@@ -133,6 +133,27 @@ func TestValidateProductionAPIDisablesEmbeddedWorkersWithoutSMTP(t *testing.T) {
 	}
 }
 
+func TestValidateProductionAPIRequiresCloudRunAudience(t *testing.T) {
+	cfg := productionAPIConfig()
+	cfg.PaymentsServiceURL = "https://payments-123.southamerica-east1.run.app"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("private Cloud Run payments service without audience validation error = nil")
+	}
+	cfg.PaymentsIDTokenAudience = cfg.PaymentsServiceURL
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("private Cloud Run payments service validation error = %v", err)
+	}
+	cfg.PaymentsIDTokenAudience = "https://other-payments.run.app"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("audience for another service validation error = nil")
+	}
+	cfg.PaymentsIDTokenAudience = cfg.PaymentsServiceURL
+	cfg.PaymentsIDTokenAudience += "/create-preference"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("audience with path validation error = nil")
+	}
+}
+
 func productionAPIConfig() Config {
 	return Config{
 		AppEnv: "production", DatabaseURL: "postgres://example", DatabaseSchema: "commerce",
