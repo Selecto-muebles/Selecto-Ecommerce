@@ -15,7 +15,7 @@ import (
 
 func AuthMiddleware(db *database.DB, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
+		authHeader := clientAuthorizationHeader(c)
 
 		if authHeader == "" {
 			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "missing token", nil)
@@ -61,4 +61,11 @@ func AuthMiddleware(db *database.DB, jwtSecret string) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func clientAuthorizationHeader(c *gin.Context) string {
+	if forwarded := strings.TrimSpace(c.GetHeader("X-Forwarded-Authorization")); forwarded != "" {
+		return forwarded
+	}
+	return c.GetHeader("Authorization")
 }
