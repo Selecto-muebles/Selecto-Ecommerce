@@ -10,24 +10,30 @@ import (
 
 	checkoutservice "Selecto-Ecommerce/internal/service/checkout"
 	"Selecto-Ecommerce/internal/shared/money"
+	"Selecto-Ecommerce/internal/shared/serviceauth"
+	"Selecto-Ecommerce/internal/shared/serviceidentity"
 )
 
 type Client struct {
 	baseURL string
+	secret  string
 	http    *http.Client
 }
 
-func NewClient(baseURL string, timeout time.Duration) *Client {
+func NewClient(baseURL string, timeout time.Duration, secret, audience string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http: &http.Client{
-			Timeout: timeout,
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true,
-				MaxIdleConns: 100, MaxIdleConnsPerHost: 100, IdleConnTimeout: 90 * time.Second,
-			},
-		},
+		secret:  secret,
+		http:    NewHTTPClient(timeout, audience),
 	}
+}
+
+func NewHTTPClient(timeout time.Duration, audience string) *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true,
+		MaxIdleConns: 100, MaxIdleConnsPerHost: 100, IdleConnTimeout: 90 * time.Second,
+	}
+	return serviceidentity.NewHTTPClient(timeout, audience, transport)
 }
 
 func (client *Client) CreatePreference(ctx context.Context, orderID int, amount money.Cents, requestID, correlationID string) (checkoutservice.Preference, error) {
@@ -43,8 +49,7 @@ func (client *Client) CreatePreference(ctx context.Context, orderID int, amount 
 		return checkoutservice.Preference{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Request-ID", requestID)
-	request.Header.Set("X-Correlation-ID", correlationID)
+	serviceauth.AddHeaders(request, client.secret, payload, requestID, correlationID)
 	response, err := client.http.Do(request)
 	if err != nil {
 		return checkoutservice.Preference{}, checkoutservice.GatewayError{Kind: checkoutservice.GatewayUnreachable}

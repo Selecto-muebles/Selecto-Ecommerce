@@ -1,24 +1,23 @@
 package handlers
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
+	paymentsinfra "Selecto-Ecommerce/internal/infrastructure/payments"
 	"Selecto-Ecommerce/internal/shared/apperrors"
+	"Selecto-Ecommerce/internal/shared/serviceauth"
 
 	"github.com/gin-gonic/gin"
 )
 
 func AdminPaymentsProxyHandler(cfg *config.Config, targetPath string) gin.HandlerFunc {
+	httpClient := paymentsinfra.NewHTTPClient(10*time.Second, cfg.PaymentsIDTokenAudience)
 	return func(c *gin.Context) {
 		if cfg.PaymentsServiceURL == "" {
 			apperrors.JSON(c, http.StatusBadGateway, apperrors.CodeBadGateway, "payments service is not configured", nil)
@@ -38,7 +37,7 @@ func AdminPaymentsProxyHandler(cfg *config.Config, targetPath string) gin.Handle
 			return
 		}
 		addInternalAdminHeaders(req, cfg.InternalWebhookSecret, nil, middleware.RequestID(c), middleware.CorrelationID(c))
-		resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			apperrors.JSON(c, http.StatusBadGateway, apperrors.CodeBadGateway, "payments service unreachable", nil)
 			return
@@ -54,18 +53,9 @@ func AdminPaymentsProxyHandler(cfg *config.Config, targetPath string) gin.Handle
 }
 
 func addInternalAdminHeaders(req *http.Request, secret string, body []byte, requestID, correlationID string) {
-	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	req.Header.Set("X-Service-Name", "selecto-ecommerce")
-	req.Header.Set("X-Service-Timestamp", timestamp)
-	req.Header.Set("X-Service-Signature", "sha256="+internalAdminSignature(secret, timestamp, body))
-	req.Header.Set("X-Request-ID", requestID)
-	req.Header.Set("X-Correlation-ID", correlationID)
+	serviceauth.AddHeaders(req, secret, body, requestID, correlationID)
 }
 
 func internalAdminSignature(secret, timestamp string, body []byte) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(timestamp))
-	mac.Write([]byte("."))
-	mac.Write(body)
-	return hex.EncodeToString(mac.Sum(nil))
+	return serviceauth.Signature(secret, timestamp, body)
 }

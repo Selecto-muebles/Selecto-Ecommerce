@@ -19,6 +19,7 @@ type Config struct {
 	DatabaseURL             string
 	DatabaseSchema          string
 	PaymentsServiceURL      string
+	PaymentsIDTokenAudience string
 	JWTSecret               string
 	JWTTTL                  time.Duration
 	GoogleClientID          string
@@ -56,6 +57,7 @@ func LoadConfig() *Config {
 		DatabaseURL:             getEnv("DATABASE_URL", ""),
 		DatabaseSchema:          getNonEmptyEnv("DB_SCHEMA", "public"),
 		PaymentsServiceURL:      strings.TrimRight(getEnv("PAYMENTS_SERVICE_URL", ""), "/"),
+		PaymentsIDTokenAudience: strings.TrimRight(strings.TrimSpace(getEnv("PAYMENTS_ID_TOKEN_AUDIENCE", "")), "/"),
 		JWTSecret:               getEnv("JWT_SECRET", ""),
 		JWTTTL:                  getDurationEnv("JWT_TTL", 72*time.Hour),
 		GoogleClientID:          strings.TrimSpace(getEnv("GOOGLE_CLIENT_ID", "")),
@@ -124,6 +126,15 @@ func (c *Config) Validate() error {
 	}
 	if c.EmailWorkerInterval < 0 || c.EmailWorkerBatchSize < 0 || c.EmailWorkerBatchSize > 100 {
 		return errors.New("email worker settings are invalid")
+	}
+	if err := validateIDTokenAudience(c.PaymentsIDTokenAudience); err != nil {
+		return err
+	}
+	if err := validateAudienceTarget(c.PaymentsIDTokenAudience, c.PaymentsServiceURL); err != nil {
+		return err
+	}
+	if isCloudRunURL(c.PaymentsServiceURL) && c.PaymentsIDTokenAudience == "" {
+		return errors.New("PAYMENTS_ID_TOKEN_AUDIENCE is required for a private Cloud Run payments service")
 	}
 	if c.AppEnv == "production" {
 		if c.EmbeddedWorkers {
