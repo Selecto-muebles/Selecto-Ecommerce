@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"database/sql"
@@ -56,7 +56,7 @@ func VerifyEmailHandler(db *database.DB) gin.HandlerFunc {
 	}
 }
 
-func ResendVerificationHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
+func ResendVerificationHandler(db *database.DB, cfg *config.Config, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input emailInput
 		if c.ShouldBindJSON(&input) != nil {
@@ -87,7 +87,8 @@ func ResendVerificationHandler(db *database.DB, cfg *config.Config) gin.HandlerF
 			apperrors.Internal(c)
 			return
 		}
-		if err := mailinfra.Enqueue(c, tx, fmt.Sprintf("verify:%d:%s", userID, hashAccountToken(token)[:16]), email, "verify_email", gin.H{"url": accountURL(cfg.StorefrontURL, "/verificar-email", token)}); err != nil {
+		outboxID, err := mailinfra.EnqueueReturningID(c, tx, fmt.Sprintf("verify:%d:%s", userID, hashAccountToken(token)[:16]), email, "verify_email", gin.H{"url": accountURL(cfg.StorefrontURL, "/verificar-email", token)})
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -95,11 +96,12 @@ func ResendVerificationHandler(db *database.DB, cfg *config.Config) gin.HandlerF
 			apperrors.Internal(c)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 		c.JSON(http.StatusAccepted, gin.H{"message": "if the account requires verification, an email will be sent"})
 	}
 }
 
-func ForgotPasswordHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc {
+func ForgotPasswordHandler(db *database.DB, cfg *config.Config, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input emailInput
 		if c.ShouldBindJSON(&input) != nil {
@@ -130,7 +132,8 @@ func ForgotPasswordHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc 
 			apperrors.Internal(c)
 			return
 		}
-		if err := mailinfra.Enqueue(c, tx, fmt.Sprintf("reset:%d:%s", userID, hashAccountToken(token)[:16]), email, "password_reset", gin.H{"url": accountURL(cfg.StorefrontURL, "/restablecer-contrasena", token)}); err != nil {
+		outboxID, err := mailinfra.EnqueueReturningID(c, tx, fmt.Sprintf("reset:%d:%s", userID, hashAccountToken(token)[:16]), email, "password_reset", gin.H{"url": accountURL(cfg.StorefrontURL, "/restablecer-contrasena", token)})
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -138,6 +141,7 @@ func ForgotPasswordHandler(db *database.DB, cfg *config.Config) gin.HandlerFunc 
 			apperrors.Internal(c)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 		c.JSON(http.StatusAccepted, gin.H{"message": "if the account exists, reset instructions will be sent"})
 	}
 }

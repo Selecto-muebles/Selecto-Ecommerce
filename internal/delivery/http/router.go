@@ -1,4 +1,4 @@
-package http
+﻿package http
 
 import (
 	"context"
@@ -11,13 +11,14 @@ import (
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/jobs"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.Engine {
+func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) *gin.Engine {
 	if cfg.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -43,17 +44,17 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
 
-	r.POST("/register", handlers.RegisterHandler(db, cfg, logger))
+	r.POST("/register", handlers.RegisterHandler(db, cfg, logger, notifiers...))
 	r.POST("/login", handlers.LoginHandler(db, cfg, logger))
 	r.POST("/auth/email/verify", handlers.VerifyEmailHandler(db))
-	r.POST("/auth/email/resend", handlers.ResendVerificationHandler(db, cfg))
-	r.POST("/auth/password/forgot", handlers.ForgotPasswordHandler(db, cfg))
+	r.POST("/auth/email/resend", handlers.ResendVerificationHandler(db, cfg, notifiers...))
+	r.POST("/auth/password/forgot", handlers.ForgotPasswordHandler(db, cfg, notifiers...))
 	r.POST("/auth/password/reset", handlers.ResetPasswordHandler(db))
 	r.POST("/auth/google", handlers.GoogleAuthHandler(db, cfg, logger, nil))
 	r.POST("/auth/google/register", handlers.GoogleRegisterHandler(db, cfg, logger))
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
 	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
-	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, cfg, logger))
+	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, cfg, logger, notifiers...))
 
 	authorized := r.Group("/")
 	authorized.Use(middleware.AuthMiddleware(db, cfg.JWTSecret))
@@ -61,9 +62,9 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	authorized.GET("/me", handlers.GetMeHandler(db))
 	authorized.PATCH("/me", handlers.UpdateMeHandler(db))
 
-	authorized.POST("/orders", handlers.CreateOrderHandler(db, cfg, logger))
+	authorized.POST("/orders", handlers.CreateOrderHandler(db, cfg, logger, notifiers...))
 	authorized.GET("/orders/:id", handlers.GetOrderHandler(db))
-	authorized.POST("/orders/:id/cancel", handlers.CancelOrderHandler(db, cfg, logger))
+	authorized.POST("/orders/:id/cancel", handlers.CancelOrderHandler(db, cfg, logger, notifiers...))
 	authorized.GET("/my-orders", handlers.GetMyOrdersHandler(db))
 	authorized.POST("/checkout", handlers.CheckoutHandler(db, cfg, logger))
 	authorized.POST("/auth/google/link", handlers.GoogleLinkHandler(db, cfg, logger, nil))
@@ -85,7 +86,7 @@ func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger) *gin.
 	admin.GET("/admin/orders", handlers.AdminListOrdersHandler(db))
 	admin.GET("/admin/orders/:id", handlers.AdminGetOrderHandler(db))
 	admin.POST("/admin/orders/:id/cancel", handlers.AdminCancelOrderHandler(db, logger))
-	admin.PATCH("/admin/orders/:id/shipment", handlers.AdminUpdateShipmentHandler(db, cfg, logger))
+	admin.PATCH("/admin/orders/:id/shipment", handlers.AdminUpdateShipmentHandler(db, cfg, logger, notifiers...))
 	admin.GET("/admin/customers", handlers.AdminListCustomersHandler(db))
 	admin.GET("/admin/customers/:id", handlers.AdminGetCustomerHandler(db))
 	admin.GET("/admin/audit-logs", handlers.AdminListAuditLogsHandler(db))

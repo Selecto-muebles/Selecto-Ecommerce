@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"errors"
@@ -10,6 +10,7 @@ import (
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	postgresrepo "Selecto-Ecommerce/internal/repository/postgres"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
@@ -18,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func CancelOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+func CancelOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderID, err := utils.DecodeID(c.Param("id"))
 		if err != nil || orderID <= 0 {
@@ -76,7 +77,8 @@ func CancelOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			apperrors.Internal(c)
 			return
 		}
-		if err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, 0, email, "cancelled"); err != nil {
+		outboxID, err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, 0, email, "cancelled")
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -84,6 +86,7 @@ func CancelOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			apperrors.Internal(c)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 		logger.Info("customer_order_cancelled", "order_id", orderID)
 		order, err := fetchOrder(c, db, orderID, email, false)
 		if err != nil {

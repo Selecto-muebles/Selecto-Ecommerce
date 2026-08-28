@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	shippingservice "Selecto-Ecommerce/internal/service/shipping"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/utils"
@@ -151,7 +152,7 @@ type UpdateShipmentInput struct {
 	CustomerNote        *string `json:"customer_note"`
 }
 
-func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderID, ok := adminIDParam(c, "id")
 		if !ok {
@@ -238,7 +239,8 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 			return
 		}
 		eventVersion := shippingservice.EventVersion(next)
-		if err := enqueueShipmentStatusEmail(c, tx, cfg, orderID, eventVersion, customerEmail, next.Status, next.TrackingURL); err != nil {
+		outboxID, err := enqueueShipmentStatusEmail(c, tx, cfg, orderID, eventVersion, customerEmail, next.Status, next.TrackingURL)
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -246,6 +248,7 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 			apperrors.Internal(c)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 
 		logger.Info("shipment_updated", "order_id", orderID, "shipment_id", shipmentID, "status", next.Status)
 		order, err := adminOrderDetail(c, db, orderID)

@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -31,12 +31,15 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg := config.LoadConfig()
+	emailTaskWorker := isEmailTaskWorkerCommand(os.Args[1:])
 	jobName, jobMode, err := parseCommand(os.Args[1:])
 	if err != nil {
 		logger.Error(logging.EventApplicationConfigurationInvalid, "error", err)
 		os.Exit(2)
 	}
-	if jobMode {
+	if emailTaskWorker {
+		err = cfg.ValidateEmailTaskWorker()
+	} else if jobMode {
 		err = cfg.ValidateJob(jobName)
 	} else {
 		err = cfg.Validate()
@@ -71,6 +74,11 @@ func main() {
 		logger.Info("serverless_job_completed", "job", jobName)
 		return
 	}
+	if emailTaskWorker {
+		worker := newEmailWorker(db, cfg, logger)
+		serveHTTP(appCtx, cfg, logger, httpDelivery.SetupEmailTaskRouter(db, cfg, logger, worker))
+		return
+	}
 	if cfg.EmbeddedWorkers {
 		httpDelivery.StartExpiredOrderWorker(appCtx, db, cfg, logger)
 	}
@@ -82,42 +90,30 @@ func main() {
 	} else if cfg.EmbeddedWorkers {
 		logger.Warn("transactional_email_disabled", "reason", "SMTP is not configured")
 	}
-	router := httpDelivery.SetupRouter(db, cfg, logger)
-
-	logger.Info(logging.EventServerStarting, "port", cfg.Port, "environment", cfg.AppEnv, "version", version, "commit", commit)
-	server := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           router,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+	notifiers, closeNotifiers, err := newEmailNotifiers(appCtx, cfg, logger)
+	if err != nil {
+		logger.Error(logging.EventApplicationConfigurationInvalid, "error", err)
+		os.Exit(1)
 	}
-	serverErrors := make(chan error, 1)
-	go func() { serverErrors <- server.ListenAndServe() }()
-	select {
-	case <-appCtx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			logger.Error(logging.EventServerFailed, "error", err)
-		}
-	case err := <-serverErrors:
-		if err != nil && err != http.ErrServerClosed {
-			logger.Error(logging.EventServerFailed, "error", err)
-			os.Exit(1)
-		}
-	}
+	defer closeNotifiers()
+	serveHTTP(appCtx, cfg, logger, httpDelivery.SetupRouter(db, cfg, logger, notifiers...))
 }
 
 func parseCommand(args []string) (string, bool, error) {
+	if isEmailTaskWorkerCommand(args) {
+		return "", false, nil
+	}
 	if len(args) == 0 {
 		return "", false, nil
 	}
 	if len(args) == 2 && args[0] == "job" && (args[1] == jobs.ExpireOrders || args[1] == jobs.EmailOutbox) {
 		return args[1], true, nil
 	}
-	return "", false, fmt.Errorf("usage: selecto-ecommerce [job expire-orders|job email-outbox]")
+	return "", false, fmt.Errorf("usage: selecto-ecommerce [job expire-orders|job email-outbox|serve email-outbox]")
+}
+
+func isEmailTaskWorkerCommand(args []string) bool {
+	return len(args) == 2 && args[0] == "serve" && args[1] == "email-outbox"
 }
 
 func runHealthcheck() {

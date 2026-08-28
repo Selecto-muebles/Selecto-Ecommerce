@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"database/sql"
@@ -38,7 +38,12 @@ type RegisterInput struct {
 
 const maxBcryptPasswordBytes = 72
 
-func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+func RegisterHandler(
+	db *database.DB,
+	cfg *config.Config,
+	logger *slog.Logger,
+	notifiers ...mailinfra.DispatchNotifier,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input RegisterInput
 
@@ -121,7 +126,8 @@ func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			apperrors.Internal(c)
 			return
 		}
-		if err := mailinfra.Enqueue(c, tx, fmt.Sprintf("verify:%d:%s", userID, hashAccountToken(verificationToken)[:16]), input.Email, "verify_email", gin.H{"url": accountURL(cfg.StorefrontURL, "/verificar-email", verificationToken)}); err != nil {
+		outboxID, err := mailinfra.EnqueueReturningID(c, tx, fmt.Sprintf("verify:%d:%s", userID, hashAccountToken(verificationToken)[:16]), input.Email, "verify_email", gin.H{"url": accountURL(cfg.StorefrontURL, "/verificar-email", verificationToken)})
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -129,6 +135,7 @@ func RegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 			apperrors.Internal(c)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 
 		logger.Info(logging.EventUserRegistrationCompleted, "user_id", userID, "role", "user")
 		c.JSON(http.StatusOK, gin.H{"message": "user created", "verification_required": true})

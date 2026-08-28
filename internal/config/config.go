@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"errors"
@@ -46,6 +46,14 @@ type Config struct {
 	EmailWorkerBatchSize    int
 	EmbeddedWorkers         bool
 	JobTimeout              time.Duration
+	EmailTasksEnabled         bool
+	EmailTasksProject         string
+	EmailTasksLocation        string
+	EmailTasksQueue           string
+	EmailTasksWorkerURL       string
+	EmailTasksServiceAccount  string
+	EmailTasksAudience        string
+	EmailTasksDispatchTimeout time.Duration
 }
 
 func LoadConfig() *Config {
@@ -84,6 +92,14 @@ func LoadConfig() *Config {
 		EmailWorkerBatchSize:    getIntEnv("EMAIL_WORKER_BATCH_SIZE", 20),
 		EmbeddedWorkers:         getBoolEnv("RUN_EMBEDDED_WORKERS", getEnv("APP_ENV", "development") != "production"),
 		JobTimeout:              getDurationEnv("JOB_TIMEOUT", 5*time.Minute),
+		EmailTasksEnabled:         getBoolEnv("EMAIL_TASKS_ENABLED", false),
+		EmailTasksProject:         strings.TrimSpace(getEnv("EMAIL_TASKS_PROJECT", "")),
+		EmailTasksLocation:        strings.TrimSpace(getEnv("EMAIL_TASKS_LOCATION", "")),
+		EmailTasksQueue:           strings.TrimSpace(getEnv("EMAIL_TASKS_QUEUE", "")),
+		EmailTasksWorkerURL:       strings.TrimRight(strings.TrimSpace(getEnv("EMAIL_TASKS_WORKER_URL", "")), "/"),
+		EmailTasksServiceAccount:  strings.TrimSpace(getEnv("EMAIL_TASKS_SERVICE_ACCOUNT", "")),
+		EmailTasksAudience:        strings.TrimRight(strings.TrimSpace(getEnv("EMAIL_TASKS_AUDIENCE", "")), "/"),
+		EmailTasksDispatchTimeout: getDurationEnv("EMAIL_TASKS_DISPATCH_TIMEOUT", 2*time.Second),
 	}
 }
 

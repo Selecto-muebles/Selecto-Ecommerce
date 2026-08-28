@@ -1,15 +1,20 @@
-package email
+﻿package email
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+type QueryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
 func Enqueue(ctx context.Context, db Execer, eventKey, recipient, template string, payload any) error {
@@ -25,4 +30,28 @@ func Enqueue(ctx context.Context, db Execer, eventKey, recipient, template strin
 		return fmt.Errorf("enqueue email: %w", err)
 	}
 	return nil
+}
+
+func EnqueueReturningID(
+	ctx context.Context,
+	db QueryRower,
+	eventKey, recipient, template string,
+	payload any,
+) (int64, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshal email payload: %w", err)
+	}
+
+	var id int64
+	err = db.QueryRow(ctx, `
+		INSERT INTO email_outbox (event_key, recipient, template, payload)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (event_key) DO UPDATE
+		SET event_key = EXCLUDED.event_key
+		RETURNING id`, eventKey, recipient, template, raw).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("enqueue email: %w", err)
+	}
+	return id, nil
 }

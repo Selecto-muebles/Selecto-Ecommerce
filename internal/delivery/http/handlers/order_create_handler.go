@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	postgresrepo "Selecto-Ecommerce/internal/repository/postgres"
 	orderservice "Selecto-Ecommerce/internal/service/orders"
 	"Selecto-Ecommerce/internal/shared/apperrors"
@@ -19,7 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	creator := orderservice.NewCreator(postgresrepo.NewOrderRepository(db, cfg), logger)
 	return func(c *gin.Context) {
 		var input CreateOrderInput
@@ -44,6 +45,7 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 			handleCreateOrderError(c, err)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), result.EmailOutboxID, notifiers...)
 		status := http.StatusCreated
 		if result.Replayed {
 			status = http.StatusOK

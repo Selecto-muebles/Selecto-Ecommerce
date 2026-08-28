@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"database/sql"
@@ -10,6 +10,7 @@ import (
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	postgresrepo "Selecto-Ecommerce/internal/repository/postgres"
 	paymentservice "Selecto-Ecommerce/internal/service/payments"
 	"Selecto-Ecommerce/internal/shared/apperrors"
@@ -28,7 +29,7 @@ type PaymentWebhookInput struct {
 	Status    string         `json:"status"`
 }
 
-func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.HandlerFunc {
+func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input PaymentWebhookInput
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -139,7 +140,8 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				apperrors.Internal(c)
 				return
 			}
-			if err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus); err != nil {
+			outboxID, err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus)
+			if err != nil {
 				apperrors.Internal(c)
 				return
 			}
@@ -159,6 +161,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				apperrors.Internal(c)
 				return
 			}
+			mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 
 			logger.Info(logging.EventPaymentWebhookRecorded, "payment_id", input.PaymentID, "order_id", orderID, "public_id", utils.EncodeID(orderID), "payment_status", newStatus, "order_status", currentStatus)
 
@@ -239,7 +242,8 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			apperrors.Internal(c)
 			return
 		}
-		if err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus); err != nil {
+		outboxID, err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus)
+		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -260,6 +264,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			apperrors.Internal(c)
 			return
 		}
+		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
 
 		logger.Info(logging.EventPaymentWebhookApplied, "payment_id", input.PaymentID, "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", newStatus)
 
