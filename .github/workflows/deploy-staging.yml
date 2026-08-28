@@ -1,0 +1,100 @@
+﻿name: Deploy Staging to GCP
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: southamerica-east1
+  IMAGE: southamerica-east1-docker.pkg.dev/Selecto-development/Selecto-containers/selecto-ecommerce:${{ github.sha }}
+
+jobs:
+  quality:
+    name: Certify release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: Selecto_test
+          POSTGRES_USER: Selecto
+          POSTGRES_PASSWORD: Selecto_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U Selecto -d Selecto_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://Selecto:Selecto_test@localhost:5432/Selecto_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.13"
+          cache: true
+      - run: go mod verify
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+      - name: Apply migrations twice
+        run: |
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql -f migrations/005_product_merchandising.sql -f migrations/006_google_identity_and_shipping.sql -f migrations/007_order_delivery_preference.sql -f migrations/008_customer_account_and_notifications.sql -f migrations/009_email_outbox_due_index.sql
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql -f migrations/005_product_merchandising.sql -f migrations/006_google_identity_and_shipping.sql -f migrations/007_order_delivery_preference.sql -f migrations/008_customer_account_and_notifications.sql -f migrations/009_email_outbox_due_index.sql
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
+      - run: bash scripts/check_source_size.sh
+      - run: bash scripts/check_architecture.sh
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  deploy:
+    name: Promote certified image
+    needs: quality
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/101240114732/locations/global/workloadIdentityPools/Selecto-github/providers/github
+          service_account: github-ecommerce@Selecto-development.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - name: Publish immutable image
+        run: |
+          if gcloud artifacts docker images describe "${IMAGE}" >/dev/null 2>&1; then
+            echo "Immutable image already exists: ${IMAGE}"
+          else
+            docker build --build-arg VERSION=staging --build-arg COMMIT=${{ github.sha }} -t "${IMAGE}" .
+            docker push "${IMAGE}"
+          fi
+      - name: Deploy exact image
+        run: |
+          gcloud run deploy selecto-ecommerce-staging --image="${IMAGE}" --region="${REGION}" --quiet
+          if gcloud run services describe Selecto-email-outbox-worker-staging --region="${REGION}" >/dev/null 2>&1; then
+            gcloud run services update Selecto-email-outbox-worker-staging --image="${IMAGE}" --region="${REGION}" --quiet
+          else
+            echo "Email worker is not bootstrapped yet; API deployment will continue."
+          fi
+          gcloud run jobs update Selecto-expire-orders-staging --image="${IMAGE}" --region="${REGION}" --quiet
+          gcloud run jobs update Selecto-email-outbox-staging --image="${IMAGE}" --region="${REGION}" --quiet
+      - name: Verify ready revision
+        run: |
+          test "$(gcloud run services describe selecto-ecommerce-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
+          if gcloud run services describe Selecto-email-outbox-worker-staging --region="${REGION}" >/dev/null 2>&1; then
+            test "$(gcloud run services describe Selecto-email-outbox-worker-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
+            test -z "$(gcloud run services get-iam-policy Selecto-email-outbox-worker-staging --region="${REGION}" --flatten='bindings[].members' --filter='bindings.members:allUsers' --format='value(bindings.members)')"
+            test "$(gcloud tasks queues describe Selecto-email-outbox-staging --location="${REGION}" --format='value(state)')" = "RUNNING"
+          else
+            echo "Email worker verification deferred until scripts/gcp/bootstrap_email_tasks.sh runs."
+          fi
+          test "$(gcloud run jobs describe Selecto-expire-orders-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
+          test "$(gcloud run jobs describe Selecto-email-outbox-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
