@@ -1,4 +1,4 @@
-﻿package handlers
+package handlers
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 )
 
 var paymentStatusLabels = map[string]string{"paid": "aprobado", "failed": "rechazado", "cancelled": "cancelado", "pending": "pendiente"}
-var shipmentStatusLabels = map[string]string{"preparing": "en preparaciÃ³n", "ready_for_dispatch": "lista para despachar", "shipped": "en camino", "delivered": "entregada", "delivery_failed": "con una incidencia", "cancelled": "cancelada"}
+var shipmentStatusLabels = map[string]string{"preparing": "en preparación", "ready_for_dispatch": "lista para despachar", "shipped": "en camino", "delivered": "entregada", "delivery_failed": "con una incidencia", "cancelled": "cancelada"}
 
 func enqueueOrderCreatedEmail(ctx context.Context, db mailinfra.QueryRower, cfg *config.Config, orderID int, recipient string, total money.Cents) (int64, error) {
 	publicID := utils.EncodeID(orderID)

@@ -1,4 +1,4 @@
-﻿package http
+package http
 
 import (
 	"context"
@@ -10,15 +10,20 @@ import (
 	"Selecto-Ecommerce/internal/delivery/http/handlers"
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
 	"Selecto-Ecommerce/internal/infrastructure/database"
-	"Selecto-Ecommerce/internal/jobs"
 	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
+	"Selecto-Ecommerce/internal/jobs"
 	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) *gin.Engine {
+func SetupRouter(
+	db *database.DB,
+	cfg *config.Config,
+	logger *slog.Logger,
+	notifiers ...mailinfra.DispatchNotifier,
+) *gin.Engine {
 	if cfg.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}

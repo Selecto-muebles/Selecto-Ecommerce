@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"errors"
@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// ValidateEmailTaskWorker validates config for the serverless email-outbox worker.
 func (c *Config) ValidateEmailTaskWorker() error {
 	if err := c.validateDatabase(); err != nil {
 		return err

@@ -81,14 +81,15 @@ func (repository *OrderRepository) Create(ctx context.Context, command orderserv
 	if err := insertOrderItems(ctx, tx, orderID, reserved); err != nil {
 		return orderservice.CreateResult{}, err
 	}
-	if err := insertOrderAuditAndEmail(ctx, tx, repository.cfg, orderID, command.Email, total); err != nil {
+	outboxID, err := insertOrderAuditAndEmail(ctx, tx, repository.cfg, orderID, command.Email, total)
+	if err != nil {
 		return orderservice.CreateResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return orderservice.CreateResult{}, err
 	}
 	return orderservice.CreateResult{
-		OrderID: orderID, UserID: userID, Status: string(domain.OrderStatusPending), Total: total, Reservations: reservations,
+		OrderID: orderID, UserID: userID, EmailOutboxID: outboxID, Status: string(domain.OrderStatusPending), Total: total, Reservations: reservations,
 	}, nil
 }
 
@@ -113,8 +114,12 @@ func findIdempotentOrder(ctx context.Context, tx pgx.Tx, userID int, key, reques
 		return orderservice.CreateResult{}, false, err
 	}
 	var orderID int
+	var emailOutboxID int64
 	var status, existingHash, totalDecimal string
-	err := tx.QueryRow(ctx, "SELECT id, status, total::TEXT, COALESCE(request_hash, '') FROM orders WHERE user_id=$1 AND idempotency_key=$2", userID, key).Scan(&orderID, &status, &totalDecimal, &existingHash)
+	err := tx.QueryRow(ctx, `SELECT o.id, o.status, o.total::TEXT, COALESCE(o.request_hash, ''), COALESCE(e.id, 0)
+		FROM orders o
+		LEFT JOIN email_outbox e ON e.event_key = 'order-created:' || o.id::TEXT
+		WHERE o.user_id=$1 AND o.idempotency_key=$2`, userID, key).Scan(&orderID, &status, &totalDecimal, &existingHash, &emailOutboxID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return orderservice.CreateResult{}, false, nil
 	}
@@ -125,7 +130,7 @@ func findIdempotentOrder(ctx context.Context, tx pgx.Tx, userID int, key, reques
 		return orderservice.CreateResult{}, false, orderservice.ErrIdempotencyConflict
 	}
 	total, err := money.FromDecimalString(totalDecimal)
-	return orderservice.CreateResult{OrderID: orderID, UserID: userID, Status: status, Total: total, Replayed: true}, true, err
+	return orderservice.CreateResult{OrderID: orderID, UserID: userID, EmailOutboxID: emailOutboxID, Status: status, Total: total, Replayed: true}, true, err
 }
 
 func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.PreparedItems, grouped map[int][]orderservice.GroupedItem) (money.Cents, []reservedOrderItem, []orderservice.Reservation, error) {

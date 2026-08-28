@@ -1,4 +1,4 @@
-﻿module Selecto-Ecommerce
+module Selecto-Ecommerce
 
 go 1.25.13
 
