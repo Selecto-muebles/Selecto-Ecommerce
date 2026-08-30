@@ -1,4 +1,4 @@
-FROM golang:1.25.12-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587 AS build
+FROM golang:1.25.13-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 ARG GOPROXY=https://proxy.golang.org,direct

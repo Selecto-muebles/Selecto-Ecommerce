@@ -45,13 +45,13 @@ func insertOrderItems(ctx context.Context, tx pgx.Tx, orderID int, items []reser
 	return nil
 }
 
-func insertOrderAuditAndEmail(ctx context.Context, tx pgx.Tx, cfg *config.Config, orderID int, email string, total money.Cents) error {
+func insertOrderAuditAndEmail(ctx context.Context, tx pgx.Tx, cfg *config.Config, orderID int, email string, total money.Cents) (int64, error) {
 	if _, err := tx.Exec(ctx, `INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata)
 		VALUES ($1, 'order_created', 'order', $2, $3)`, email, orderID, fmt.Sprintf(`{"total_cents":%d}`, total)); err != nil {
-		return err
+		return 0, err
 	}
 	publicID := utils.EncodeID(orderID)
-	return mailinfra.Enqueue(ctx, tx, fmt.Sprintf("order-created:%d", orderID), email, "order_created", map[string]any{
+	return mailinfra.EnqueueReturningID(ctx, tx, fmt.Sprintf("order-created:%d", orderID), email, "order_created", map[string]any{
 		"order_id": publicID,
 		"total":    fmt.Sprintf("$ %.2f", total.Float64()),
 		"url":      cfg.StorefrontURL + "/cuenta/ordenes/" + publicID,

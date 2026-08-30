@@ -154,6 +154,25 @@ func TestValidateProductionAPIRequiresCloudRunAudience(t *testing.T) {
 	}
 }
 
+func TestValidateProductionEmailTasks(t *testing.T) {
+	cfg := productionAPIConfig()
+	cfg.EmailTasksEnabled = true
+	cfg.EmailTasksProject = "selecto-development"
+	cfg.EmailTasksLocation = "southamerica-east1"
+	cfg.EmailTasksQueue = "selecto-email-outbox-staging"
+	cfg.EmailTasksWorkerURL = "https://email-worker.run.app"
+	cfg.EmailTasksAudience = cfg.EmailTasksWorkerURL
+	cfg.EmailTasksServiceAccount = "email-tasks@selecto-development.iam.gserviceaccount.com"
+	cfg.EmailTasksDispatchTimeout = 2 * time.Second
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("email tasks validation error = %v", err)
+	}
+	cfg.EmailTasksWorkerURL = "http://email-worker.run.app"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("insecure worker URL validation error = nil")
+	}
+}
+
 func productionAPIConfig() Config {
 	return Config{
 		AppEnv: "production", DatabaseURL: "postgres://example", DatabaseSchema: "commerce",

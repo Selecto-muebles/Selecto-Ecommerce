@@ -1,4 +1,4 @@
-﻿package email
+package email
 
 import (
 	"context"
@@ -8,13 +8,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ErrEmailNotReady is returned by ProcessOne when the email cannot be
-// claimed for processing (e.g. it was already sent or is not yet due).
 var ErrEmailNotReady = errors.New("email is not ready for processing")
 
-// ProcessOne claims and sends a single email from the outbox identified by id.
-// It is designed for use with serverless task runners (e.g. GCP Cloud Tasks)
-// that dispatch one task per outbox entry.
 func (w *Worker) ProcessOne(ctx context.Context, id int64) error {
 	email, claimed, err := w.claimOne(ctx, id)
 	if err != nil {

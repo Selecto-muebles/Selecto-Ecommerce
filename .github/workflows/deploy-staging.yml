@@ -1,4 +1,4 @@
-﻿name: Deploy Staging to GCP
+name: Deploy Staging to GCP
 
 on:
   workflow_dispatch:

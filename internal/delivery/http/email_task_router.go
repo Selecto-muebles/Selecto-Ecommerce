@@ -1,4 +1,4 @@
-﻿package http
+package http
 
 import (
 	"context"
@@ -23,9 +23,6 @@ type emailOutboxProcessor interface {
 	ProcessOne(context.Context, int64) error
 }
 
-// SetupEmailTaskRouter returns a minimal Gin engine that handles a single
-// Cloud Tasks HTTP target for processing individual email outbox entries.
-// It is meant to run as a separate serverless process from the main API.
 func SetupEmailTaskRouter(
 	db *database.DB,
 	cfg *config.Config,

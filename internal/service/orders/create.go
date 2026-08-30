@@ -77,12 +77,13 @@ type Reservation struct {
 }
 
 type CreateResult struct {
-	OrderID      int
-	UserID       int
-	Status       string
-	Total        money.Cents
-	Replayed     bool
-	Reservations []Reservation
+	OrderID       int
+	UserID        int
+	EmailOutboxID int64
+	Status        string
+	Total         money.Cents
+	Replayed      bool
+	Reservations  []Reservation
 }
 
 type CreatorRepository interface {
