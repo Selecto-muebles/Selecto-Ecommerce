@@ -40,7 +40,7 @@ type checkoutGatewayStub struct {
 	calls      int
 }
 
-func (stub *checkoutGatewayStub) CreatePreference(context.Context, int, money.Cents, string, string) (Preference, error) {
+func (stub *checkoutGatewayStub) CreatePreference(context.Context, int, money.Cents, Customer, string, string) (Preference, error) {
 	stub.calls++
 	return stub.preference, nil
 }

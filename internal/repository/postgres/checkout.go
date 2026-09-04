@@ -27,12 +27,14 @@ func (repository *CheckoutRepository) LoadAvailable(ctx context.Context, orderID
 	var order checkoutservice.Order
 	var preferenceID, checkoutURL, environment sql.NullString
 	err := repository.db.Pool.QueryRow(ctx, `SELECT o.status, ROUND(o.total * 100)::BIGINT,
-		o.active_payment_preference_id, o.active_checkout_url, o.active_payment_environment
+		o.active_payment_preference_id, o.active_checkout_url, o.active_payment_environment,
+		u.email, TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), COALESCE(u.dni, '')
 		FROM orders o JOIN users u ON u.id=o.user_id
 		WHERE o.id=$1 AND u.email=$2
 		AND COALESCE(o.expires_at, o.created_at + make_interval(secs => $3)) > NOW()`,
 		orderID, email, int(repository.cfg.OrderPendingTTL.Seconds()),
-	).Scan(&order.Status, &order.Total, &preferenceID, &checkoutURL, &environment)
+	).Scan(&order.Status, &order.Total, &preferenceID, &checkoutURL, &environment,
+		&order.Customer.Email, &order.Customer.Name, &order.Customer.Identification)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return order, checkoutservice.ErrOrderNotFound
 	}

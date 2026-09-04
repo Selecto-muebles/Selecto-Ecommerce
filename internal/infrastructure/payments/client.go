@@ -36,11 +36,16 @@ func NewHTTPClient(timeout time.Duration, audience string) *http.Client {
 	return serviceidentity.NewHTTPClient(timeout, audience, transport)
 }
 
-func (client *Client) CreatePreference(ctx context.Context, orderID int, amount money.Cents, requestID, correlationID string) (checkoutservice.Preference, error) {
+func (client *Client) CreatePreference(ctx context.Context, orderID int, amount money.Cents, customer checkoutservice.Customer, requestID, correlationID string) (checkoutservice.Preference, error) {
 	if client.baseURL == "" {
 		return checkoutservice.Preference{}, checkoutservice.ErrGatewayNotConfigured
 	}
-	payload, err := json.Marshal(map[string]any{"order_id": orderID, "amount": amount.Float64()})
+	payload, err := json.Marshal(map[string]any{
+		"order_id": orderID, "amount": amount.Float64(),
+		"customer": map[string]string{
+			"email": customer.Email, "name": customer.Name, "identification": customer.Identification,
+		},
+	})
 	if err != nil {
 		return checkoutservice.Preference{}, err
 	}

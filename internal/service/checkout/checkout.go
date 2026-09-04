@@ -47,7 +47,14 @@ type Order struct {
 	ID         int
 	Status     string
 	Total      money.Cents
+	Customer   Customer
 	Preference *Preference
+}
+
+type Customer struct {
+	Email          string
+	Name           string
+	Identification string
 }
 
 type Repository interface {
@@ -58,7 +65,7 @@ type Repository interface {
 }
 
 type Gateway interface {
-	CreatePreference(context.Context, int, money.Cents, string, string) (Preference, error)
+	CreatePreference(context.Context, int, money.Cents, Customer, string, string) (Preference, error)
 }
 
 type Input struct {
@@ -98,7 +105,7 @@ func (service *Service) Start(ctx context.Context, input Input) (Result, error) 
 	}
 
 	service.logger.Info(logging.EventCheckoutStarted, "order_id", order.ID, "public_id", utils.EncodeID(order.ID), "amount_cents", int64(order.Total))
-	preference, err := service.gateway.CreatePreference(ctx, order.ID, order.Total, input.RequestID, input.CorrelationID)
+	preference, err := service.gateway.CreatePreference(ctx, order.ID, order.Total, order.Customer, input.RequestID, input.CorrelationID)
 	if err != nil {
 		return Result{}, err
 	}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	checkoutservice "Selecto-Ecommerce/internal/service/checkout"
 	"Selecto-Ecommerce/internal/shared/money"
 )
 
@@ -23,6 +24,15 @@ func TestCreatePreferenceSignsInternalRequest(t *testing.T) {
 		var body json.RawMessage
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
+		}
+		var payload struct {
+			Customer checkoutservice.Customer `json:"customer"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Customer.Email != "cliente@example.com" || payload.Customer.Name != "Cliente Selecto" || payload.Customer.Identification != "30111222" {
+			t.Fatalf("customer payload = %+v", payload.Customer)
 		}
 		timestamp := r.Header.Get("X-Service-Timestamp")
 		mac := hmac.New(sha256.New, []byte(secret))
@@ -43,7 +53,7 @@ func TestCreatePreferenceSignsInternalRequest(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, time.Second, secret, "")
-	result, err := client.CreatePreference(t.Context(), 7, money.Cents(125000), "req-1", "corr-1")
+	result, err := client.CreatePreference(t.Context(), 7, money.Cents(125000), checkoutservice.Customer{Email: "cliente@example.com", Name: "Cliente Selecto", Identification: "30111222"}, "req-1", "corr-1")
 	if err != nil {
 		t.Fatal(err)
 	}
