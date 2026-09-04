@@ -23,10 +23,12 @@ import (
 )
 
 type PaymentWebhookInput struct {
-	PaymentID int            `json:"payment_id" binding:"required"`
-	OrderID   utils.PublicID `json:"order_id" binding:"required"`
-	Amount    *float64       `json:"amount"`
-	Status    string         `json:"status"`
+	PaymentID         int            `json:"payment_id"`
+	PaymentProvider   string         `json:"payment_provider"`
+	ProviderPaymentID string         `json:"provider_payment_id"`
+	OrderID           utils.PublicID `json:"order_id" binding:"required"`
+	Amount            *float64       `json:"amount"`
+	Status            string         `json:"status"`
 }
 
 func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Logger, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
@@ -38,8 +40,8 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		}
 
 		orderID := input.OrderID.Int()
-		if input.PaymentID <= 0 || orderID <= 0 {
-			apperrors.BadRequest(c, "payment_id and order_id must be positive")
+		if orderID <= 0 || (input.PaymentID <= 0 && (input.PaymentProvider == "" || input.ProviderPaymentID == "")) {
+			apperrors.BadRequest(c, "payment identity and order_id are required")
 			return
 		}
 
@@ -49,7 +51,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			return
 		}
 
-		logger.Info(logging.EventPaymentWebhookReceived, "payment_id", input.PaymentID, "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", newStatus)
+		logger.Info(logging.EventPaymentWebhookReceived, "payment_id", input.PaymentID, "payment_provider", input.PaymentProvider, "provider_payment_id", input.ProviderPaymentID, "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", newStatus)
 
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
@@ -81,14 +83,20 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		if input.Amount != nil {
 			amountValue = *input.Amount
 		}
-		eventKey := fmt.Sprintf("%d:%d:%s", input.PaymentID, orderID, newStatus)
+		identity := fmt.Sprintf("%d", input.PaymentID)
+		if input.PaymentProvider != "" {
+			identity = input.PaymentProvider + ":" + input.ProviderPaymentID
+		}
+		eventKey := fmt.Sprintf("%s:%d:%s", identity, orderID, newStatus)
 		commandTag, err := tx.Exec(
 			c,
-			`INSERT INTO payment_webhook_events (event_key, payment_id, order_id, status, amount_cents)
-			 VALUES ($1, $2, $3, $4, CASE WHEN $5::NUMERIC IS NULL THEN NULL ELSE ROUND($5::NUMERIC * 100)::BIGINT END)
+			`INSERT INTO payment_webhook_events (event_key, payment_id, payment_provider, provider_payment_id, order_id, status, amount_cents)
+			 VALUES ($1, NULLIF($2, 0), NULLIF($3, ''), NULLIF($4, ''), $5, $6, CASE WHEN $7::NUMERIC IS NULL THEN NULL ELSE ROUND($7::NUMERIC * 100)::BIGINT END)
 			 ON CONFLICT (event_key) DO NOTHING`,
 			eventKey,
 			input.PaymentID,
+			input.PaymentProvider,
+			input.ProviderPaymentID,
 			orderID,
 			newStatus,
 			amountValue,
@@ -120,11 +128,15 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			_, err = tx.Exec(
 				c,
 				`UPDATE orders
-				 SET payment_status=$1,
-				     payment_id=$2
-				 WHERE id=$3`,
+					 SET payment_status=$1,
+					     payment_id=NULLIF($2, 0),
+					     payment_provider=NULLIF($3, ''),
+					     provider_payment_id=NULLIF($4, '')
+					 WHERE id=$5`,
 				newStatus,
 				input.PaymentID,
+				input.PaymentProvider,
+				input.ProviderPaymentID,
 				orderID,
 			)
 			if err != nil {
@@ -214,14 +226,18 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		_, err = tx.Exec(
 			c,
 			`UPDATE orders
-			 SET status=$1,
-			     payment_status=$1,
-			     payment_id=$2,
-			     paid_at=CASE WHEN $1='paid' THEN NOW() ELSE paid_at END,
-			     cancelled_at=CASE WHEN $1='paid' THEN NULL WHEN $1 IN ('failed', 'cancelled') THEN NOW() ELSE cancelled_at END
-			 WHERE id=$3`,
+					 SET status=$1,
+					     payment_status=$1,
+					     payment_id=NULLIF($2, 0),
+					     payment_provider=NULLIF($3, ''),
+					     provider_payment_id=NULLIF($4, ''),
+					     paid_at=CASE WHEN $1='paid' THEN NOW() ELSE paid_at END,
+					     cancelled_at=CASE WHEN $1='paid' THEN NULL WHEN $1 IN ('failed', 'cancelled') THEN NOW() ELSE cancelled_at END
+					 WHERE id=$5`,
 			newStatus,
 			input.PaymentID,
+			input.PaymentProvider,
+			input.ProviderPaymentID,
 			orderID,
 		)
 		if err != nil {

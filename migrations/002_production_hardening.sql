@@ -38,7 +38,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS payment_webhook_events (
     id BIGSERIAL PRIMARY KEY,
     event_key TEXT NOT NULL UNIQUE,
-    payment_id BIGINT NOT NULL,
+    payment_id BIGINT,
     order_id INTEGER NOT NULL REFERENCES orders(id),
     status TEXT NOT NULL CHECK (status IN ('paid', 'failed', 'cancelled')),
     amount_cents BIGINT,

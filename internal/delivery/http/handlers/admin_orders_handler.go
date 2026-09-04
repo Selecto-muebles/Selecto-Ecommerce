@@ -46,7 +46,7 @@ func AdminListOrdersHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		args = append(args, page.PageSize, page.Offset)
-		rows, err := db.Pool.Query(c, "SELECT o.id, o.status, COALESCE(o.payment_status, ''), o.total, o.created_at, o.paid_at, o.cancelled_at, o.payment_id, u.id, u.email, COALESCE(u.first_name, ''), COALESCE(u.last_name, '') FROM orders o JOIN users u ON u.id=o.user_id WHERE "+whereSQL+" ORDER BY "+adminservice.OrderSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
+		rows, err := db.Pool.Query(c, "SELECT o.id, o.status, COALESCE(o.payment_status, ''), o.total, o.created_at, o.paid_at, o.cancelled_at, o.payment_id, COALESCE(o.payment_provider, CASE WHEN o.payment_id IS NOT NULL THEN 'mercadopago' ELSE '' END), COALESCE(o.provider_payment_id, o.payment_id::TEXT, ''), u.id, u.email, COALESCE(u.first_name, ''), COALESCE(u.last_name, '') FROM orders o JOIN users u ON u.id=o.user_id WHERE "+whereSQL+" ORDER BY "+adminservice.OrderSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -55,16 +55,16 @@ func AdminListOrdersHandler(db *database.DB) gin.HandlerFunc {
 		items := []gin.H{}
 		for rows.Next() {
 			var id, userID int
-			var status, paymentStatus, email, firstName, lastName string
+			var status, paymentStatus, paymentProvider, providerPaymentID, email, firstName, lastName string
 			var totalValue float64
 			var createdAt time.Time
 			var paidAt, cancelledAt sql.NullTime
 			var paymentID sql.NullInt64
-			if err := rows.Scan(&id, &status, &paymentStatus, &totalValue, &createdAt, &paidAt, &cancelledAt, &paymentID, &userID, &email, &firstName, &lastName); err != nil {
+			if err := rows.Scan(&id, &status, &paymentStatus, &totalValue, &createdAt, &paidAt, &cancelledAt, &paymentID, &paymentProvider, &providerPaymentID, &userID, &email, &firstName, &lastName); err != nil {
 				apperrors.Internal(c)
 				return
 			}
-			items = append(items, gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": totalValue, "created_at": createdAt, "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName}})
+			items = append(items, gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": totalValue, "created_at": createdAt, "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "payment_provider": paymentProvider, "provider_payment_id": providerPaymentID, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName}})
 		}
 		if err := rows.Err(); err != nil {
 			apperrors.Internal(c)
@@ -91,13 +91,13 @@ func AdminGetOrderHandler(db *database.DB) gin.HandlerFunc {
 
 func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, error) {
 	var userID int
-	var status, paymentStatus, preferenceID, checkoutURL, environment string
+	var status, paymentStatus, paymentProvider, providerPaymentID, preferenceID, checkoutURL, environment string
 	var total float64
 	var createdAt time.Time
 	var expiresAt, paidAt, cancelledAt sql.NullTime
 	var paymentID sql.NullInt64
 	var email, firstName, lastName, dni, streetAddress, streetNumber, postalCode, province, locality, phone string
-	err := db.Pool.QueryRow(ctx, `SELECT o.user_id, o.status, COALESCE(o.payment_status, ''), o.total, o.created_at, o.expires_at, o.paid_at, o.cancelled_at, o.payment_id, COALESCE(o.active_payment_preference_id, ''), COALESCE(o.active_checkout_url, ''), COALESCE(o.active_payment_environment, ''), u.email, COALESCE(u.first_name, ''), COALESCE(u.last_name, ''), COALESCE(u.dni, ''), COALESCE(u.street_address, ''), COALESCE(u.street_number, ''), COALESCE(u.postal_code, ''), COALESCE(u.province, ''), COALESCE(u.locality, ''), COALESCE(u.phone_number, '') FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1`, id).Scan(&userID, &status, &paymentStatus, &total, &createdAt, &expiresAt, &paidAt, &cancelledAt, &paymentID, &preferenceID, &checkoutURL, &environment, &email, &firstName, &lastName, &dni, &streetAddress, &streetNumber, &postalCode, &province, &locality, &phone)
+	err := db.Pool.QueryRow(ctx, `SELECT o.user_id, o.status, COALESCE(o.payment_status, ''), o.total, o.created_at, o.expires_at, o.paid_at, o.cancelled_at, o.payment_id, COALESCE(o.payment_provider, CASE WHEN o.payment_id IS NOT NULL THEN 'mercadopago' ELSE '' END), COALESCE(o.provider_payment_id, o.payment_id::TEXT, ''), COALESCE(o.active_payment_preference_id, ''), COALESCE(o.active_checkout_url, ''), COALESCE(o.active_payment_environment, ''), u.email, COALESCE(u.first_name, ''), COALESCE(u.last_name, ''), COALESCE(u.dni, ''), COALESCE(u.street_address, ''), COALESCE(u.street_number, ''), COALESCE(u.postal_code, ''), COALESCE(u.province, ''), COALESCE(u.locality, ''), COALESCE(u.phone_number, '') FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1`, id).Scan(&userID, &status, &paymentStatus, &total, &createdAt, &expiresAt, &paidAt, &cancelledAt, &paymentID, &paymentProvider, &providerPaymentID, &preferenceID, &checkoutURL, &environment, &email, &firstName, &lastName, &dni, &streetAddress, &streetNumber, &postalCode, &province, &locality, &phone)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, erro
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": total, "created_at": createdAt, "expires_at": nullableTime(expiresAt), "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "active_payment_preference_id": preferenceID, "active_checkout_url": checkoutURL, "active_payment_environment": environment, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName, "dni": dni, "street_address": streetAddress, "street_number": streetNumber, "postal_code": postalCode, "province": province, "locality": locality, "phone_number": phone}, "shipping_address": shippingAddress, "shipment": shipment, "items": items, "audit_logs": audit}, nil
+	return gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": total, "created_at": createdAt, "expires_at": nullableTime(expiresAt), "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "payment_provider": paymentProvider, "provider_payment_id": providerPaymentID, "active_payment_preference_id": preferenceID, "active_checkout_url": checkoutURL, "active_payment_environment": environment, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName, "dni": dni, "street_address": streetAddress, "street_number": streetNumber, "postal_code": postalCode, "province": province, "locality": locality, "phone_number": phone}, "shipping_address": shippingAddress, "shipment": shipment, "items": items, "audit_logs": audit}, nil
 }
 
 func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H, error) {
