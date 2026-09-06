@@ -1,10 +1,10 @@
-name: Deploy Staging to GCP
+name: Actualizar Ecommerce en GCP existente
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-staging
+  group: actualizar-ecommerce-destry-development
   cancel-in-progress: false
 
 permissions:
@@ -12,40 +12,66 @@ permissions:
   id-token: write
 
 env:
+  PROJECT_ID: destry-development
   REGION: southamerica-east1
-  IMAGE: southamerica-east1-docker.pkg.dev/Selecto-development/Selecto-containers/selecto-ecommerce:${{ github.sha }}
+  IMAGE_REPOSITORY: southamerica-east1-docker.pkg.dev/destry-development/destry-containers/destry-ecommerce
+  API_SERVICE: destry-ecommerce-staging
+  EMAIL_WORKER_SERVICE: destry-email-outbox-worker-staging
+  EMAIL_JOB: destry-email-outbox-staging
+  EXPIRATION_JOB: destry-expire-orders-staging
+  EMAIL_QUEUE: destry-email-outbox-staging
 
 jobs:
   quality:
-    name: Certify release candidate
+    name: Certificar candidato y migraciones
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: Selecto_test
-          POSTGRES_USER: Selecto
-          POSTGRES_PASSWORD: Selecto_test
+          POSTGRES_DB: destry_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U Selecto -d Selecto_test"
+          --health-cmd "pg_isready -U postgres -d destry_test"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
-      TEST_DATABASE_URL: postgres://Selecto:Selecto_test@localhost:5432/Selecto_test?sslmode=disable
+      DATABASE_URL: postgres://ecommerce_test:ecommerce_test@localhost:5432/destry_test?sslmode=disable
+      TEST_DATABASE_URL: postgres://ecommerce_test:ecommerce_test@localhost:5432/destry_test?sslmode=disable
+      DB_SCHEMA: commerce
+      JOB_TIMEOUT: 5m
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.13"
           cache: true
+      - name: Preparar roles aislados de PostgreSQL 17
+        env:
+          PGPASSWORD: postgres_test
+        run: |
+          psql -h localhost -U postgres -d destry_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE ecommerce_test LOGIN PASSWORD 'ecommerce_test' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          CREATE SCHEMA commerce AUTHORIZATION ecommerce_test;
+          CREATE SCHEMA payments AUTHORIZATION postgres;
+          REVOKE ALL ON SCHEMA public FROM PUBLIC;
+          REVOKE ALL ON SCHEMA payments FROM PUBLIC;
+          ALTER ROLE ecommerce_test IN DATABASE destry_test SET search_path TO commerce;
+          SQL
       - run: go mod verify
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
-      - name: Apply migrations twice
+      - name: Ejecutar, auditar y repetir migraciones
         run: |
-          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql -f migrations/005_product_merchandising.sql -f migrations/006_google_identity_and_shipping.sql -f migrations/007_order_delivery_preference.sql -f migrations/008_customer_account_and_notifications.sql -f migrations/009_email_outbox_due_index.sql -f migrations/010_marketing_subscriptions.sql -f migrations/011_marketing_subscriptions_schema.sql -f migrations/012_external_payment_provider_identity.sql
-          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_orders_checkout.sql -f migrations/002_production_hardening.sql -f migrations/003_customer_profile.sql -f migrations/004_admin_backoffice_indexes.sql -f migrations/005_product_merchandising.sql -f migrations/006_google_identity_and_shipping.sql -f migrations/007_order_delivery_preference.sql -f migrations/008_customer_account_and_notifications.sql -f migrations/009_email_outbox_due_index.sql -f migrations/010_marketing_subscriptions.sql -f migrations/011_marketing_subscriptions_schema.sql -f migrations/012_external_payment_provider_identity.sql
-      - name: Verify formatting
+          go run ./cmd/api database migrate
+          go run ./cmd/api database audit
+          go run ./cmd/api database migrate
+          go run ./cmd/api database audit
+      - name: Validar contrato versionado del Gateway
+        run: |
+          node -e 'const spec=require("./ops/api-gateway/openapi.json"); const required=["/health","/marketing/newsletter","/marketing/newsletter/unsubscribe","/admin/marketing/subscriptions","/admin/communications/outbox","/admin/payments/records/{record_id}"]; if(Object.keys(spec.paths).length!==48||required.some(path=>!spec.paths[path]||!spec.paths[path].options)){process.exit(1)}'
+      - name: Verificar formato
         run: test -z "$(gofmt -l .)"
       - run: bash scripts/check_source_size.sh
       - run: bash scripts/check_architecture.sh
@@ -53,48 +79,64 @@ jobs:
       - run: go test -race ./...
 
   deploy:
-    name: Promote certified image
+    name: Actualizar recursos existentes
     needs: quality
     if: github.ref == 'refs/heads/main'
     environment: staging
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/101240114732/locations/global/workloadIdentityPools/Selecto-github/providers/github
-          service_account: github-ecommerce@Selecto-development.iam.gserviceaccount.com
+          workload_identity_provider: projects/101240114732/locations/global/workloadIdentityPools/destry-github/providers/github
+          service_account: github-ecommerce@destry-development.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v2
-      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-      - name: Publish immutable image
+      - name: Fijar proyecto y comprobar inventario
         run: |
-          if gcloud artifacts docker images describe "${IMAGE}" >/dev/null 2>&1; then
-            echo "Immutable image already exists: ${IMAGE}"
-          else
+          gcloud config set project "${PROJECT_ID}"
+          gcloud run services describe "${API_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null
+          gcloud run services describe "${EMAIL_WORKER_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null
+          gcloud run jobs describe "${EMAIL_JOB}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null
+          gcloud run jobs describe "${EXPIRATION_JOB}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null
+          test "$(gcloud tasks queues describe "${EMAIL_QUEUE}" --location="${REGION}" --project="${PROJECT_ID}" --format='value(state)')" = "RUNNING"
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - id: image
+        name: Publicar imagen inmutable
+        env:
+          IMAGE: ${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+        run: |
+          if ! gcloud artifacts docker images describe "${IMAGE}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
             docker build --build-arg VERSION=staging --build-arg COMMIT=${{ github.sha }} -t "${IMAGE}" .
             docker push "${IMAGE}"
           fi
-      - name: Deploy exact image
+          DIGEST="$(gcloud artifacts docker images describe "${IMAGE}" --project="${PROJECT_ID}" --format='value(image_summary.digest)')"
+          test -n "${DIGEST}"
+          echo "exact=${IMAGE_REPOSITORY}@${DIGEST}" >> "${GITHUB_OUTPUT}"
+      - name: Migrar y auditar dentro de la VPC existente
+        env:
+          EXACT_IMAGE: ${{ steps.image.outputs.exact }}
         run: |
-          gcloud run deploy selecto-ecommerce-staging --image="${IMAGE}" --region="${REGION}" --quiet
-          if gcloud run services describe Selecto-email-outbox-worker-staging --region="${REGION}" >/dev/null 2>&1; then
-            gcloud run services update Selecto-email-outbox-worker-staging --image="${IMAGE}" --region="${REGION}" --quiet
-          else
-            echo "Email worker is not bootstrapped yet; API deployment will continue."
-          fi
-          gcloud run jobs update Selecto-expire-orders-staging --image="${IMAGE}" --region="${REGION}" --quiet
-          gcloud run jobs update Selecto-email-outbox-staging --image="${IMAGE}" --region="${REGION}" --quiet
-      - name: Verify ready revision
+          gcloud run jobs update "${EMAIL_JOB}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
+          gcloud run jobs execute "${EMAIL_JOB}" --args=database,migrate --wait --region="${REGION}" --project="${PROJECT_ID}"
+          gcloud run jobs execute "${EMAIL_JOB}" --args=database,audit --wait --region="${REGION}" --project="${PROJECT_ID}"
+      - name: Actualizar servicios y jobs sin recrearlos
+        env:
+          EXACT_IMAGE: ${{ steps.image.outputs.exact }}
         run: |
-          test "$(gcloud run services describe selecto-ecommerce-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
-          if gcloud run services describe Selecto-email-outbox-worker-staging --region="${REGION}" >/dev/null 2>&1; then
-            test "$(gcloud run services describe Selecto-email-outbox-worker-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
-            test -z "$(gcloud run services get-iam-policy Selecto-email-outbox-worker-staging --region="${REGION}" --flatten='bindings[].members' --filter='bindings.members:allUsers' --format='value(bindings.members)')"
-            test "$(gcloud tasks queues describe Selecto-email-outbox-staging --location="${REGION}" --format='value(state)')" = "RUNNING"
-          else
-            echo "Email worker verification deferred until scripts/gcp/bootstrap_email_tasks.sh runs."
-          fi
-          test "$(gcloud run jobs describe Selecto-expire-orders-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
-          test "$(gcloud run jobs describe Selecto-email-outbox-staging --region="${REGION}" --format='value(status.conditions[0].status)')" = "True"
+          gcloud run services update "${EMAIL_WORKER_SERVICE}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-email-worker,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
+          gcloud run services update "${API_SERVICE}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
+          gcloud run jobs update "${EXPIRATION_JOB}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
+      - name: Verificar digest, disponibilidad y privacidad
+        env:
+          EXACT_IMAGE: ${{ steps.image.outputs.exact }}
+        run: |
+          test "$(gcloud run services describe "${API_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(spec.template.spec.containers[0].image)')" = "${EXACT_IMAGE}"
+          test "$(gcloud run services describe "${EMAIL_WORKER_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(spec.template.spec.containers[0].image)')" = "${EXACT_IMAGE}"
+          test "$(gcloud run jobs describe "${EMAIL_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(spec.template.spec.template.spec.containers[0].image)')" = "${EXACT_IMAGE}"
+          test "$(gcloud run jobs describe "${EXPIRATION_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(spec.template.spec.template.spec.containers[0].image)')" = "${EXACT_IMAGE}"
+          test "$(gcloud run services describe "${API_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.conditions[0].status)')" = "True"
+          test "$(gcloud run services describe "${EMAIL_WORKER_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.conditions[0].status)')" = "True"
+          test -z "$(gcloud run services get-iam-policy "${EMAIL_WORKER_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --flatten='bindings[].members' --filter='bindings.members:allUsers' --format='value(bindings.members)')"
+          test "$(gcloud tasks queues describe "${EMAIL_QUEUE}" --location="${REGION}" --project="${PROJECT_ID}" --format='value(state)')" = "RUNNING"

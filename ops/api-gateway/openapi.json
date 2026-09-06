@@ -1,0 +1,1277 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Selecto Ecommerce API sobre infraestructura Destry",
+    "version": "corte-selecto-v1"
+  },
+  "schemes": ["https"],
+  "produces": ["application/json"],
+  "consumes": ["application/json"],
+  "x-google-backend": {
+    "address": "https://destry-ecommerce-staging-101240114732.southamerica-east1.run.app",
+    "deadline": 30,
+    "pathTranslation": "APPEND_PATH_TO_ADDRESS",
+    "protocol": "h2"
+  },
+  "paths": {
+    "/admin/audit-logs": {
+      "get": {
+        "operationId": "AdminListAuditLogs",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_34",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/audit-logs/entities/{entity_type}/{entity_id}": {
+      "get": {
+        "operationId": "AdminListEntityAuditLogs",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "entity_type",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_35",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "entity_type",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/customers": {
+      "get": {
+        "operationId": "AdminListCustomers",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_32",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/customers/{id}": {
+      "get": {
+        "operationId": "AdminGetCustomer",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_33",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/dashboard": {
+      "get": {
+        "operationId": "GetAdminDashboard",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_21",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/me": {
+      "get": {
+        "operationId": "GetAdminMe",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_20",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/metrics": {
+      "get": {
+        "operationId": "AdminMetrics",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_43",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/observability": {
+      "get": {
+        "operationId": "AdminObservability",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_36",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/orders": {
+      "get": {
+        "operationId": "AdminListOrders",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_28",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/orders/{id}": {
+      "get": {
+        "operationId": "AdminGetOrder",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_29",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/orders/{id}/cancel": {
+      "post": {
+        "operationId": "AdminCancelOrder",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_30",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/orders/{id}/shipment": {
+      "patch": {
+        "operationId": "AdminUpdateShipment",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_31",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/payment-notifications": {
+      "get": {
+        "operationId": "AdminListPaymentNotifications",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_41",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/payment-preferences": {
+      "get": {
+        "operationId": "AdminListPaymentPreferences",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_39",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/payment-webhooks": {
+      "get": {
+        "operationId": "AdminListPaymentWebhooks",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_40",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/payments": {
+      "get": {
+        "operationId": "AdminListPayments",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_37",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/payments-metrics": {
+      "get": {
+        "operationId": "AdminPaymentsMetrics",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_42",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/payments/records/{record_id}": {
+      "get": {
+        "operationId": "AdminGetPaymentRecord",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_admin_payment_record",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/payments/{payment_id}": {
+      "get": {
+        "operationId": "AdminGetPayment",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_38",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/products": {
+      "get": {
+        "operationId": "AdminListProducts",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "post": {
+        "operationId": "AdminCreateProduct",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_22",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/products/{id}": {
+      "get": {
+        "operationId": "AdminGetProduct",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "AdminUpdateProduct",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_23",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/products/{id}/images": {
+      "post": {
+        "operationId": "AdminUploadProductImage",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_26",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/products/{id}/images/{image_id}": {
+      "delete": {
+        "operationId": "AdminDeleteProductImage",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "AdminUpdateProductImage",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_27",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/products/{id}/status": {
+      "patch": {
+        "operationId": "AdminUpdateProductStatus",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_24",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/products/{id}/stock-adjustments": {
+      "post": {
+        "operationId": "AdminAdjustProductStock",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_25",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/auth/email/resend": {
+      "post": {
+        "operationId": "ResendEmailVerification",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_6",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/auth/email/verify": {
+      "post": {
+        "operationId": "VerifyEmail",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_5",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "operationId": "GoogleAuth",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_9",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/auth/google/link": {
+      "post": {
+        "operationId": "GoogleLink",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_11",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/auth/google/register": {
+      "post": {
+        "operationId": "GoogleRegister",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_10",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/auth/password/forgot": {
+      "post": {
+        "operationId": "ForgotPassword",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_7",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/auth/password/reset": {
+      "post": {
+        "operationId": "ResetPassword",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_8",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/checkout": {
+      "post": {
+        "operationId": "Checkout",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_19",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "Health",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_1",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/login": {
+      "post": {
+        "operationId": "Login",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_4",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/me": {
+      "get": {
+        "operationId": "GetMe",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "patch": {
+        "operationId": "UpdateMe",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_14",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/my-orders": {
+      "get": {
+        "operationId": "ListMyOrders",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_18",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/orders": {
+      "post": {
+        "operationId": "CreateOrder",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_15",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "GetOrder",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_16",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/orders/{id}/cancel": {
+      "post": {
+        "operationId": "CancelOrder",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_17",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/product-images/{id}": {
+      "get": {
+        "operationId": "GetProductImage",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "Cors_preflight_13",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/products": {
+      "get": {
+        "operationId": "ListProducts",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "post": {
+        "operationId": "LegacyCreateProduct",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_12",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "Ready",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_2",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/register": {
+      "post": {
+        "operationId": "Register",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_3",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/marketing/newsletter": {
+      "post": {
+        "operationId": "NewsletterSubscribe",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_marketing_newsletter",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/marketing/newsletter/unsubscribe": {
+      "post": {
+        "operationId": "NewsletterUnsubscribe",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_marketing_newsletter_unsubscribe",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/marketing/subscriptions": {
+      "get": {
+        "operationId": "AdminListMarketingSubscriptions",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_admin_marketing_subscriptions",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/admin/communications/outbox": {
+      "get": {
+        "operationId": "AdminListEmailOutbox",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "Cors_preflight_admin_communications_outbox",
+        "responses": {
+          "200": {
+            "description": "Respuesta del servicio"
+          }
+        },
+        "parameters": []
+      }
+    }
+  }
+}
