@@ -159,6 +159,16 @@ func (c *Config) ValidateJob(name string) error {
 	return nil
 }
 
+func (c *Config) ValidateDatabaseCommand() error {
+	if err := c.validateDatabase(); err != nil {
+		return err
+	}
+	if c.JobTimeout <= 0 || c.JobTimeout > time.Hour {
+		return errors.New("JOB_TIMEOUT must be positive and at most 1h")
+	}
+	return nil
+}
+
 func (c *Config) validateDatabase() error {
 	if c.DatabaseURL == "" {
 		return errors.New("DATABASE_URL is required")

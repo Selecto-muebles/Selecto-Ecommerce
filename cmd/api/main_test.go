@@ -34,3 +34,27 @@ func TestIsEmailTaskWorkerCommand(t *testing.T) {
 		t.Fatal("job command must not be treated as request worker")
 	}
 }
+
+func TestParseDatabaseCommand(t *testing.T) {
+	tests := []struct {
+		name, action string
+		args         []string
+		enabled      bool
+		wantErr      bool
+	}{
+		{name: "api"},
+		{name: "other command", args: []string{"job", "expire-orders"}},
+		{name: "migrate", args: []string{"database", "migrate"}, action: "migrate", enabled: true},
+		{name: "audit", args: []string{"database", "audit"}, action: "audit", enabled: true},
+		{name: "missing action", args: []string{"database"}, enabled: true, wantErr: true},
+		{name: "unknown action", args: []string{"database", "drop"}, enabled: true, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			action, enabled, err := parseDatabaseCommand(test.args)
+			if action != test.action || enabled != test.enabled || (err != nil) != test.wantErr {
+				t.Fatalf("parseDatabaseCommand() = (%q, %v, %v)", action, enabled, err)
+			}
+		})
+	}
+}

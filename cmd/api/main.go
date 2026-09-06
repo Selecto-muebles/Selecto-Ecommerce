@@ -32,12 +32,22 @@ func main() {
 
 	cfg := config.LoadConfig()
 	emailTaskWorker := isEmailTaskWorkerCommand(os.Args[1:])
-	jobName, jobMode, err := parseCommand(os.Args[1:])
+	databaseAction, databaseMode, err := parseDatabaseCommand(os.Args[1:])
 	if err != nil {
 		logger.Error(logging.EventApplicationConfigurationInvalid, "error", err)
 		os.Exit(2)
 	}
-	if emailTaskWorker {
+	jobName, jobMode := "", false
+	if !databaseMode {
+		jobName, jobMode, err = parseCommand(os.Args[1:])
+		if err != nil {
+			logger.Error(logging.EventApplicationConfigurationInvalid, "error", err)
+			os.Exit(2)
+		}
+	}
+	if databaseMode {
+		err = cfg.ValidateDatabaseCommand()
+	} else if emailTaskWorker {
 		err = cfg.ValidateEmailTaskWorker()
 	} else if jobMode {
 		err = cfg.ValidateJob(jobName)
@@ -63,6 +73,15 @@ func main() {
 
 	appCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if databaseMode {
+		databaseCtx, cancel := context.WithTimeout(appCtx, cfg.JobTimeout)
+		defer cancel()
+		if err := runDatabaseCommand(databaseCtx, db, databaseAction, logger); err != nil {
+			logger.Error("database_command_failed", "action", databaseAction, "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if jobMode {
 		jobCtx, cancel := context.WithTimeout(appCtx, cfg.JobTimeout)
 		defer cancel()
@@ -99,6 +118,27 @@ func main() {
 	serveHTTP(appCtx, cfg, logger, httpDelivery.SetupRouter(db, cfg, logger, notifiers...))
 }
 
+func runDatabaseCommand(ctx context.Context, db *database.DB, action string, logger *slog.Logger) error {
+	switch action {
+	case databaseMigrate:
+		result, err := database.ApplyMigrations(ctx, db.Pool)
+		if err != nil {
+			return err
+		}
+		logger.Info("database_migrations_completed", "applied", result.Applied, "skipped", result.Skipped)
+		return nil
+	case databaseAudit:
+		report, err := database.AuditSchema(ctx, db.Pool)
+		if err != nil {
+			return err
+		}
+		logger.Info("database_audit_completed", "tables", report.Tables, "migrations", report.Migrations, "indexes", report.Indexes)
+		return nil
+	default:
+		return fmt.Errorf("unsupported database action %q", action)
+	}
+}
+
 func parseCommand(args []string) (string, bool, error) {
 	if isEmailTaskWorkerCommand(args) {
 		return "", false, nil
@@ -109,7 +149,7 @@ func parseCommand(args []string) (string, bool, error) {
 	if len(args) == 2 && args[0] == "job" && (args[1] == jobs.ExpireOrders || args[1] == jobs.EmailOutbox) {
 		return args[1], true, nil
 	}
-	return "", false, fmt.Errorf("usage: selecto-ecommerce [job expire-orders|job email-outbox|serve email-outbox]")
+	return "", false, fmt.Errorf("usage: selecto-ecommerce [database migrate|database audit|job expire-orders|job email-outbox|serve email-outbox]")
 }
 
 func isEmailTaskWorkerCommand(args []string) bool {

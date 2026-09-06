@@ -173,6 +173,22 @@ func TestValidateProductionEmailTasks(t *testing.T) {
 	}
 }
 
+func TestValidateDatabaseCommandRequiresOnlySafeDatabaseSettings(t *testing.T) {
+	cfg := Config{
+		DatabaseURL: "postgres://example", DatabaseSchema: "commerce",
+		DatabaseMaxConns: 5, DatabaseMinConns: 0,
+		DatabaseMaxConnLifetime: time.Minute, DatabaseMaxConnIdleTime: time.Minute,
+		JobTimeout: time.Minute,
+	}
+	if err := cfg.ValidateDatabaseCommand(); err != nil {
+		t.Fatalf("database command validation error = %v", err)
+	}
+	cfg.JobTimeout = 0
+	if err := cfg.ValidateDatabaseCommand(); err == nil {
+		t.Fatal("invalid database command timeout validation error = nil")
+	}
+}
+
 func productionAPIConfig() Config {
 	return Config{
 		AppEnv: "production", DatabaseURL: "postgres://example", DatabaseSchema: "commerce",

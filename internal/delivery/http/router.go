@@ -124,7 +124,7 @@ func corsConfig(cfg *config.Config) cors.Config {
 	corsCfg := cors.Config{
 		AllowOrigins:  cfg.CORSAllowedOrigins,
 		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:  []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Correlation-ID", "X-Service-Name", "X-Service-Timestamp", "X-Service-Signature", "Idempotency-Key", "X-Selecto-Signature", "X-Selecto-Timestamp"},
+		AllowHeaders:  []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Correlation-ID", "X-Service-Name", "X-Service-Timestamp", "X-Service-Signature", "Idempotency-Key", "X-Selecto-Signature", "X-Selecto-Timestamp", "X-Destry-Signature", "X-Destry-Timestamp"},
 		ExposeHeaders: []string{"X-Request-ID", "X-Correlation-ID"},
 	}
 
