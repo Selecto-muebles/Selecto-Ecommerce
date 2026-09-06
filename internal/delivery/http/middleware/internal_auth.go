@@ -22,6 +22,8 @@ const (
 	serviceTimestampHeader   = "X-Service-Timestamp"
 	legacySignatureHeader    = "X-Selecto-Signature"
 	legacyTimestampHeader    = "X-Selecto-Timestamp"
+	destrySignatureHeader    = "X-Destry-Signature"
+	destryTimestampHeader    = "X-Destry-Timestamp"
 	idempotencyKeyHeader     = "Idempotency-Key"
 	internalSignatureContext = "internal_signature"
 	internalTimestampContext = "internal_timestamp"
@@ -94,6 +96,10 @@ func normalizedInternalAuthHeaders(c *gin.Context) internalAuthHeaders {
 	if timestamp == "" || signature == "" {
 		timestamp = c.GetHeader(legacyTimestampHeader)
 		signature = c.GetHeader(legacySignatureHeader)
+	}
+	if timestamp == "" || signature == "" {
+		timestamp = c.GetHeader(destryTimestampHeader)
+		signature = c.GetHeader(destrySignatureHeader)
 	}
 
 	return internalAuthHeaders{
