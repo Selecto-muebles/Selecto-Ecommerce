@@ -37,7 +37,10 @@ type OrderItemResponse struct {
 	Name            string            `json:"name"`
 	Quantity        int               `json:"quantity"`
 	Price           float64           `json:"price"`
+	OriginalPrice   float64           `json:"original_unit_price"`
+	DiscountPercent float64           `json:"discount_percent"`
 	Subtotal        float64           `json:"subtotal"`
+	TotalSavings    float64           `json:"total_savings"`
 	SelectedOptions map[string]string `json:"selected_options"`
 }
 

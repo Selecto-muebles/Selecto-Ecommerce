@@ -117,7 +117,9 @@ func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, erro
 }
 
 func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H, error) {
-	rows, err := db.Pool.Query(ctx, "SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price, oi.selected_options FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id", orderID)
+	rows, err := db.Pool.Query(ctx, `SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price,
+		COALESCE(oi.original_unit_price, oi.price), oi.discount_percent, oi.selected_options
+		FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id`, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,12 +128,17 @@ func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H
 	for rows.Next() {
 		var id, productID, quantity int
 		var name string
-		var price float64
+		var price, originalPrice, discountPercent float64
 		var selectedOptions map[string]string
-		if err := rows.Scan(&id, &productID, &name, &quantity, &price, &selectedOptions); err != nil {
+		if err := rows.Scan(&id, &productID, &name, &quantity, &price, &originalPrice, &discountPercent, &selectedOptions); err != nil {
 			return nil, err
 		}
-		items = append(items, gin.H{"id": utils.EncodeID(id), "product_id": utils.EncodeID(productID), "name": name, "quantity": quantity, "price": price, "subtotal": price * float64(quantity), "selected_options": selectedOptions})
+		items = append(items, gin.H{
+			"id": utils.EncodeID(id), "product_id": utils.EncodeID(productID), "name": name,
+			"quantity": quantity, "price": price, "original_unit_price": originalPrice,
+			"discount_percent": discountPercent, "subtotal": price * float64(quantity),
+			"total_savings": (originalPrice - price) * float64(quantity), "selected_options": selectedOptions,
+		})
 	}
 	return items, rows.Err()
 }

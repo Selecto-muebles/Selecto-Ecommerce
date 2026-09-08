@@ -28,6 +28,8 @@ type reservedOrderItem struct {
 	productID       int
 	quantity        int
 	price           money.Cents
+	originalPrice   money.Cents
+	discountPercent int
 	selectedOptions map[string]string
 }
 
@@ -159,11 +161,16 @@ func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.Prepa
 		if _, err := tx.Exec(ctx, "UPDATE products SET stock=stock-$1 WHERE id=$2", quantity, productID); err != nil {
 			return 0, nil, nil, err
 		}
-		price := money.Cents(priceCents)
-		total += price * money.Cents(quantity)
+		pricing := domain.CalculateVolumePrice(priceCents, quantity)
+		price := money.Cents(pricing.DiscountedUnitPrice)
+		originalPrice := money.Cents(pricing.OriginalUnitPrice)
+		total += money.Cents(pricing.Subtotal)
 		reservations = append(reservations, orderservice.Reservation{ProductID: productID, Quantity: quantity, RemainingStock: stock - quantity})
 		for _, item := range grouped[productID] {
-			items = append(items, reservedOrderItem{productID: productID, quantity: item.Quantity, price: price, selectedOptions: item.SelectedOptions})
+			items = append(items, reservedOrderItem{
+				productID: productID, quantity: item.Quantity, price: price, originalPrice: originalPrice,
+				discountPercent: pricing.DiscountPercent, selectedOptions: item.SelectedOptions,
+			})
 		}
 	}
 	return total, items, reservations, nil

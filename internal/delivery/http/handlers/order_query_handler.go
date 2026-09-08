@@ -109,7 +109,8 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 
 	rows, err := db.Pool.Query(
 		c,
-		`SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price, oi.selected_options
+		`SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price,
+			COALESCE(oi.original_unit_price, oi.price), oi.discount_percent, oi.selected_options
 		 FROM order_items oi
 		 JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id=$1
@@ -127,7 +128,7 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 		var productID int
 		var item OrderItemResponse
 		var selectedOptions []byte
-		if err := rows.Scan(&itemID, &productID, &item.Name, &item.Quantity, &item.Price, &selectedOptions); err != nil {
+		if err := rows.Scan(&itemID, &productID, &item.Name, &item.Quantity, &item.Price, &item.OriginalPrice, &item.DiscountPercent, &selectedOptions); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(selectedOptions, &item.SelectedOptions); err != nil {
@@ -136,6 +137,7 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 		item.ID = utils.EncodeID(itemID)
 		item.ProductID = utils.EncodeID(productID)
 		item.Subtotal = item.Price * float64(item.Quantity)
+		item.TotalSavings = (item.OriginalPrice - item.Price) * float64(item.Quantity)
 		order.Items = append(order.Items, item)
 	}
 
