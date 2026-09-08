@@ -20,7 +20,7 @@ var requiredCommerceColumns = map[string][]string{
 	"products":                 {"id", "name", "price", "stock", "active", "sku", "description", "category", "created_at", "updated_at"},
 	"users":                    {"id", "email", "password", "role", "first_name", "last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "email_verified_at", "session_version"},
 	"orders":                   {"id", "user_id", "status", "total", "created_at", "expires_at", "paid_at", "cancelled_at", "payment_status", "payment_id", "active_payment_preference_id", "active_checkout_url", "active_payment_environment", "idempotency_key", "request_hash", "payment_provider", "provider_payment_id"},
-	"order_items":              {"id", "order_id", "product_id", "quantity", "price", "selected_options"},
+	"order_items":              {"id", "order_id", "product_id", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
 	"payment_webhook_events":   {"id", "event_key", "payment_id", "order_id", "status", "amount_cents", "received_at", "processed_at", "result", "payment_provider", "provider_payment_id"},
 	"audit_logs":               {"id", "actor_email", "action", "entity_type", "entity_id", "metadata", "created_at"},
 	"product_images":           {"id", "product_id", "mime_type", "alt_text", "sort_order", "content", "size_bytes", "created_at"},
@@ -48,6 +48,8 @@ var requiredCommerceIndexes = []string{
 var requiredCommerceConstraints = []string{
 	"orders_status_check",
 	"orders_payment_status_check",
+	"order_items_original_unit_price_check",
+	"order_items_discount_percent_check",
 	"product_options_name_not_blank",
 	"product_options_values_array",
 }
@@ -81,7 +83,7 @@ func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
 	if err := auditCommerceColumnContracts(ctx, pool, currentSchema); err != nil {
 		return AuditReport{}, err
 	}
-	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 12, Indexes: len(requiredCommerceIndexes)}, nil
+	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 13, Indexes: len(requiredCommerceIndexes)}, nil
 }
 
 func databaseSchema(ctx context.Context, pool *pgxpool.Pool) (string, error) {
