@@ -68,6 +68,7 @@ func TestAdminDeleteProductRemovesUnreferencedInactiveProductAndAudits(t *testin
 	c.Params = gin.Params{{Key: "id", Value: utils.EncodeID(productID)}}
 	c.Set("email", "delete-certification@selecto.test")
 	AdminDeleteProductHandler(&database.DB{Pool: pool}, slog.Default())(c)
+	c.Writer.WriteHeaderNow()
 
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("delete inactive status = %d body=%s, want 204", recorder.Code, recorder.Body.String())
