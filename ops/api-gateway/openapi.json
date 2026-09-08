@@ -566,6 +566,25 @@
           }
         ]
       },
+      "delete": {
+        "operationId": "AdminDeleteProduct",
+        "responses": {
+          "204": {
+            "description": "Producto eliminado definitivamente"
+          },
+          "409": {
+            "description": "El producto debe estar inactivo y no tener historial de órdenes"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
       "options": {
         "operationId": "Cors_preflight_23",
         "responses": {

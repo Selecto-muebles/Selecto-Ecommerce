@@ -70,7 +70,7 @@ jobs:
           go run ./cmd/api database audit
       - name: Validar contrato versionado del Gateway
         run: |
-          node -e 'const spec=require("./ops/api-gateway/openapi.json"); const required=["/health","/marketing/newsletter","/marketing/newsletter/unsubscribe","/admin/marketing/subscriptions","/admin/communications/outbox","/admin/payments/records/{record_id}"]; if(Object.keys(spec.paths).length!==48||required.some(path=>!spec.paths[path]||!spec.paths[path].options)){process.exit(1)}'
+          node -e 'const spec=require("./ops/api-gateway/openapi.json"); const required=["/health","/marketing/newsletter","/marketing/newsletter/unsubscribe","/admin/marketing/subscriptions","/admin/communications/outbox","/admin/payments/records/{record_id}"]; if(Object.keys(spec.paths).length!==48||required.some(path=>!spec.paths[path]||!spec.paths[path].options)||!spec.paths["/admin/products/{id}"]?.delete){process.exit(1)}'
       - name: Verificar formato
         run: test -z "$(gofmt -l .)"
       - run: bash scripts/check_source_size.sh
