@@ -181,6 +181,9 @@ func AdminUpdateProductStatusHandler(db *database.DB, logger *slog.Logger) gin.H
 	}
 }
 
+// AdminDeleteProductHandler permanently removes only an inactive product that
+// has never been used by an order. Historical products must remain available
+// for order, payment and audit traceability, so they are archived instead.
 func AdminAdjustProductStockHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := adminIDParam(c, "id")
