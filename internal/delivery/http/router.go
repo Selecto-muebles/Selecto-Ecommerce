@@ -86,6 +86,7 @@ func SetupRouter(
 	admin.POST("/admin/products", handlers.AdminCreateProductHandler(db, logger))
 	admin.PATCH("/admin/products/:id", handlers.AdminUpdateProductHandler(db, logger))
 	admin.PATCH("/admin/products/:id/status", handlers.AdminUpdateProductStatusHandler(db, logger))
+	admin.DELETE("/admin/products/:id", handlers.AdminDeleteProductHandler(db, logger))
 	admin.POST("/admin/products/:id/stock-adjustments", handlers.AdminAdjustProductStockHandler(db, logger))
 	admin.POST("/admin/products/:id/images", handlers.AdminUploadProductImageHandler(db))
 	admin.PATCH("/admin/products/:id/images/:image_id", handlers.AdminUpdateProductImageHandler(db))
