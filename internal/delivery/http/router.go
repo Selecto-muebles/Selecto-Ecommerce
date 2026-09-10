@@ -58,6 +58,7 @@ func SetupRouter(
 	r.POST("/auth/google", handlers.GoogleAuthHandler(db, cfg, logger, nil))
 	r.POST("/auth/google/register", handlers.GoogleRegisterHandler(db, cfg, logger))
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
+	r.GET("/categories", handlers.ListCategoriesHandler(db, true))
 	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
 	r.POST("/marketing/newsletter", handlers.NewsletterSubscribeHandler(db))
 	r.POST("/marketing/newsletter/unsubscribe", handlers.NewsletterUnsubscribeHandler(db))
@@ -81,6 +82,8 @@ func SetupRouter(
 
 	admin.GET("/admin/me", handlers.GetAdminMeHandler(db))
 	admin.GET("/admin/dashboard", handlers.GetAdminDashboardHandler(db, logger))
+	admin.GET("/admin/categories", handlers.ListCategoriesHandler(db, false))
+	admin.POST("/admin/categories", handlers.CreateCategoryHandler(db))
 	admin.GET("/admin/products", handlers.AdminListProductsHandler(db))
 	admin.GET("/admin/products/:id", handlers.AdminGetProductHandler(db))
 	admin.POST("/admin/products", handlers.AdminCreateProductHandler(db, logger))

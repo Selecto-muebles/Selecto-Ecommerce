@@ -14,6 +14,15 @@
     "protocol": "h2"
   },
   "paths": {
+    "/categories": {
+      "get": {"operationId":"ListCategories","responses":{"200":{"description":"Categorías activas paginadas"}}},
+      "options": {"operationId":"CorsCategories","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/categories": {
+      "get": {"operationId":"AdminListCategories","responses":{"200":{"description":"Categorías paginadas"}}},
+      "post": {"operationId":"AdminCreateCategory","responses":{"201":{"description":"Categoría creada"},"409":{"description":"Nombre o slug duplicado"}}},
+      "options": {"operationId":"CorsAdminCategories","responses":{"204":{"description":"Preflight"}}}
+    },
     "/admin/audit-logs": {
       "get": {
         "operationId": "AdminListAuditLogs",
