@@ -16,8 +16,9 @@ type AuditReport struct {
 }
 
 var requiredCommerceColumns = map[string][]string{
+	"categories":               {"id", "name", "slug", "active", "sort_order", "created_at"},
 	"schema_migrations":        {"version", "checksum", "applied_at"},
-	"products":                 {"id", "name", "price", "stock", "active", "sku", "description", "category", "created_at", "updated_at"},
+	"products":                 {"id", "name", "price", "stock", "active", "sku", "description", "category", "category_id", "created_at", "updated_at"},
 	"users":                    {"id", "email", "password", "role", "first_name", "last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "email_verified_at", "session_version"},
 	"orders":                   {"id", "user_id", "status", "total", "created_at", "expires_at", "paid_at", "cancelled_at", "payment_status", "payment_id", "active_payment_preference_id", "active_checkout_url", "active_payment_environment", "idempotency_key", "request_hash", "payment_provider", "provider_payment_id"},
 	"order_items":              {"id", "order_id", "product_id", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
@@ -83,7 +84,7 @@ func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
 	if err := auditCommerceColumnContracts(ctx, pool, currentSchema); err != nil {
 		return AuditReport{}, err
 	}
-	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 13, Indexes: len(requiredCommerceIndexes)}, nil
+	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 14, Indexes: len(requiredCommerceIndexes)}, nil
 }
 
 func databaseSchema(ctx context.Context, pool *pgxpool.Pool) (string, error) {
