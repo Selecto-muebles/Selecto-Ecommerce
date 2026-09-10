@@ -1,13 +1,17 @@
 package handlers
 
 import (
-	"Selecto-Ecommerce/internal/repository/postgres"
-	"Selecto-Ecommerce/internal/service/catalog"
-	migrationfiles "Selecto-Ecommerce/migrations"
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"Selecto-Ecommerce/internal/repository/postgres"
+	"Selecto-Ecommerce/internal/service/catalog"
+	migrationfiles "Selecto-Ecommerce/migrations"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestCategoryMigrationPreservesLegacyProductsAndRepeats(t *testing.T) {
@@ -18,11 +22,17 @@ func TestCategoryMigrationPreservesLegacyProductsAndRepeats(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	schema := fmt.Sprintf("category_migration_%d", time.Now().UnixNano())
-	if _, err := tx.Exec(ctx, "CREATE SCHEMA "+schema+"; SET LOCAL search_path TO "+schema+"; CREATE TABLE products(id SERIAL PRIMARY KEY, category TEXT NOT NULL DEFAULT '')"); err != nil {
+	// Use the test role's existing table: database CREATE is deliberately denied in CI.
+	// The trigger change and legacy fixtures are rolled back with this transaction.
+	name := fmt.Sprintf("category-migration-%d", time.Now().UnixNano())
+	if _, err := tx.Exec(ctx, "ALTER TABLE products DISABLE TRIGGER products_category_sync"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, "INSERT INTO products(category) VALUES ('Calistenia'),(' calistenia '),(''),('Barras')"); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO products(name,price,stock,category) VALUES
+	 ($1,100,1,$2),($1,100,1,' ' || LOWER($2::text) || ' '),($1,100,1,''),($1,100,1,$3)`, name, name+"-Calistenia", name+"-Barras"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, "ALTER TABLE products ENABLE TRIGGER products_category_sync"); err != nil {
 		t.Fatal(err)
 	}
 	content, err := migrationfiles.Files.ReadFile("014_catalog_categories.sql")
@@ -35,14 +45,16 @@ func TestCategoryMigrationPreservesLegacyProductsAndRepeats(t *testing.T) {
 		}
 	}
 	var products, categories, linked int
-	if err := tx.QueryRow(ctx, "SELECT (SELECT COUNT(*) FROM products),(SELECT COUNT(*) FROM categories),(SELECT COUNT(*) FROM products WHERE category_id IS NOT NULL)").Scan(&products, &categories, &linked); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT COUNT(*),COUNT(DISTINCT category_id),COUNT(category_id) FROM products WHERE name=$1", name).Scan(&products, &categories, &linked); err != nil {
 		t.Fatal(err)
 	}
 	if products != 4 || categories != 2 || linked != 3 {
 		t.Fatalf("backfill counts: %d %d %d", products, categories, linked)
 	}
-	if _, err := tx.Exec(ctx, "DELETE FROM categories"); err == nil {
-		t.Fatal("referenced category deletion accepted")
+	_, err = tx.Exec(ctx, "DELETE FROM categories WHERE id IN (SELECT category_id FROM products WHERE name=$1)", name)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		t.Fatalf("referenced category deletion: got %v, want foreign key violation", err)
 	}
 }
 
