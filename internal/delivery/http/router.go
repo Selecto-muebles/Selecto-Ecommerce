@@ -12,6 +12,7 @@ import (
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	"Selecto-Ecommerce/internal/jobs"
+	"Selecto-Ecommerce/internal/repository/postgres"
 	"Selecto-Ecommerce/internal/shared/logging"
 
 	"github.com/gin-contrib/cors"
@@ -60,6 +61,9 @@ func SetupRouter(
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
 	r.GET("/categories", handlers.ListCategoriesHandler(db, true))
 	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
+	carousel := postgres.CarouselStore{Pool: db.Pool}
+	r.GET("/carousel-slides", handlers.ListCarouselHandler(carousel, true))
+	r.GET("/carousel-images/:id", handlers.CarouselImageHandler(carousel, true))
 	r.POST("/marketing/newsletter", handlers.NewsletterSubscribeHandler(db))
 	r.POST("/marketing/newsletter/unsubscribe", handlers.NewsletterUnsubscribeHandler(db))
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, cfg, logger, notifiers...))
@@ -84,6 +88,11 @@ func SetupRouter(
 	admin.GET("/admin/dashboard", handlers.GetAdminDashboardHandler(db, logger))
 	admin.GET("/admin/categories", handlers.ListCategoriesHandler(db, false))
 	admin.POST("/admin/categories", handlers.CreateCategoryHandler(db))
+	admin.GET("/admin/carousel-slides", handlers.ListCarouselHandler(carousel, false))
+	admin.POST("/admin/carousel-slides", handlers.SaveCarouselHandler(carousel, true))
+	admin.PATCH("/admin/carousel-slides/:id", handlers.SaveCarouselHandler(carousel, false))
+	admin.DELETE("/admin/carousel-slides/:id", handlers.DeleteCarouselHandler(carousel))
+	admin.GET("/admin/carousel-slides/:id/image", handlers.CarouselImageHandler(carousel, false))
 	admin.GET("/admin/products", handlers.AdminListProductsHandler(db))
 	admin.GET("/admin/products/:id", handlers.AdminGetProductHandler(db))
 	admin.POST("/admin/products", handlers.AdminCreateProductHandler(db, logger))

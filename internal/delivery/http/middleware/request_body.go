@@ -12,6 +12,10 @@ import (
 func RequestBodyLimit(maxBytes int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		limit := maxBytes
+		if (c.Request.Method == http.MethodPost && c.FullPath() == "/admin/carousel-slides") ||
+			(c.Request.Method == http.MethodPatch && c.FullPath() == "/admin/carousel-slides/:id") {
+			limit = (2 << 20) + (64 << 10)
+		}
 		if c.Request.Method == http.MethodPost && strings.HasSuffix(c.FullPath(), "/images") {
 			limit = 6 << 20
 		}
