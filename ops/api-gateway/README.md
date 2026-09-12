@@ -1,6 +1,7 @@
 # API Gateway de Ecommerce durante el corte a Selecto
 
-`openapi.json` conserva las 48 rutas de la configuración productiva de Destry,
+`openapi.json` conserva las 50 rutas previas (incluidas categorías) y agrega
+5 rutas editoriales, para un total de 55. Mantiene los contratos existentes,
 incluidos `GET`/`OPTIONS /admin/payments/records/{record_id}` y
 `DELETE /admin/products/{id}`. El backend continúa siendo el Cloud Run privado
 `destry-ecommerce-staging`; no se crea otro Gateway, servicio, red ni
@@ -36,8 +37,9 @@ gcloud api-gateway gateways update destry-ecommerce-staging-gw \
   --project=destry-development
 ```
 
-Antes de actualizar se debe comprobar que la configuración compilada conserva
-las 48 rutas. Después se prueban `/health`, catálogo, autenticación, CORS,
+Antes de actualizar se debe capturar el ID ACTIVE para rollback y comprobar que
+la configuración compilada conserva las 50 rutas previas sin modificaciones,
+agregando únicamente las 5 editoriales. Después se prueban `/health`, catálogo, autenticación, CORS,
 eliminación protegida de productos, newsletter, comunicaciones y detalle
 multiproveedor del Backoffice.
 

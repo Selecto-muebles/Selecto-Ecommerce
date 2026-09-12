@@ -14,6 +14,31 @@
     "protocol": "h2"
   },
   "paths": {
+    "/carousel-slides": {
+      "get": {"operationId":"ListCarouselSlides","responses":{"200":{"description":"Diapositivas publicadas disponibles"}}},
+      "options": {"operationId":"CorsCarouselSlides","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/carousel-images/{id}": {
+      "parameters":[{"name":"id","in":"path","required":true,"type":"integer"}],
+      "get": {"operationId":"CarouselImage","responses":{"200":{"description":"Imagen publicada"},"404":{"description":"No publicada o destino no disponible"}}},
+      "options": {"operationId":"CorsCarouselImage","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/carousel-slides": {
+      "get": {"operationId":"AdminListCarousel","responses":{"200":{"description":"Diapositivas, máximo 20"}}},
+      "post": {"operationId":"AdminCreateCarousel","consumes":["multipart/form-data"],"responses":{"201":{"description":"Diapositiva creada"},"409":{"description":"Límite o destino no disponible"}}},
+      "options": {"operationId":"CorsAdminCarousel","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/carousel-slides/{id}": {
+      "parameters":[{"name":"id","in":"path","required":true,"type":"integer"}],
+      "patch": {"operationId":"AdminUpdateCarousel","consumes":["multipart/form-data"],"responses":{"200":{"description":"Diapositiva actualizada"},"409":{"description":"Versión o destino no disponible"}}},
+      "delete": {"operationId":"AdminDeleteCarousel","responses":{"204":{"description":"Diapositiva eliminada"},"409":{"description":"Versión cambió"}}},
+      "options": {"operationId":"CorsAdminCarouselItem","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/carousel-slides/{id}/image": {
+      "parameters":[{"name":"id","in":"path","required":true,"type":"integer"}],
+      "get": {"operationId":"AdminCarouselImage","responses":{"200":{"description":"Vista previa autenticada"}}},
+      "options": {"operationId":"CorsAdminCarouselPreview","responses":{"204":{"description":"Preflight"}}}
+    },
     "/categories": {
       "get": {"operationId":"ListCategories","responses":{"200":{"description":"Categorías activas paginadas"}}},
       "options": {"operationId":"CorsCategories","responses":{"204":{"description":"Preflight"}}}

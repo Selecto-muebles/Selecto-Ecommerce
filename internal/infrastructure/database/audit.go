@@ -16,6 +16,7 @@ type AuditReport struct {
 }
 
 var requiredCommerceColumns = map[string][]string{
+	"carousel_slides":          {"id", "title", "subtitle", "alt_text", "cta_label", "target_kind", "product_id", "category_id", "sort_order", "active", "version", "mime_type", "content", "created_at", "updated_at"},
 	"categories":               {"id", "name", "slug", "active", "sort_order", "created_at"},
 	"schema_migrations":        {"version", "checksum", "applied_at"},
 	"products":                 {"id", "name", "price", "stock", "active", "sku", "description", "category", "category_id", "created_at", "updated_at"},
@@ -35,6 +36,7 @@ var requiredCommerceColumns = map[string][]string{
 }
 
 var requiredCommerceIndexes = []string{
+	"idx_carousel_order",
 	"idx_orders_user_id",
 	"idx_orders_status_expires_at",
 	"idx_order_items_order_id",
@@ -47,6 +49,7 @@ var requiredCommerceIndexes = []string{
 }
 
 var requiredCommerceConstraints = []string{
+	"carousel_target_kind",
 	"orders_status_check",
 	"orders_payment_status_check",
 	"order_items_original_unit_price_check",
@@ -84,7 +87,7 @@ func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
 	if err := auditCommerceColumnContracts(ctx, pool, currentSchema); err != nil {
 		return AuditReport{}, err
 	}
-	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 14, Indexes: len(requiredCommerceIndexes)}, nil
+	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 15, Indexes: len(requiredCommerceIndexes)}, nil
 }
 
 func databaseSchema(ctx context.Context, pool *pgxpool.Pool) (string, error) {
