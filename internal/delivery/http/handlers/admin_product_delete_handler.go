@@ -31,10 +31,6 @@ func AdminDeleteProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			handleAdminLookupErr(c, err, "product not found")
 			return
 		}
-		if active {
-			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "product must be inactive before permanent deletion", gin.H{"requires_deactivation": true})
-			return
-		}
 
 		var orderReferences int
 		if err := tx.QueryRow(c, "SELECT COUNT(*) FROM order_items WHERE product_id=$1", id).Scan(&orderReferences); err != nil {
@@ -50,7 +46,7 @@ func AdminDeleteProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			apperrors.Internal(c)
 			return
 		}
-		if err := writeAuditTx(c, tx, adminActor(c), "product_deleted", "product", id, gin.H{"name": name, "order_references": orderReferences}); err != nil {
+		if err := writeAuditTx(c, tx, adminActor(c), "product_deleted", "product", id, gin.H{"name": name, "was_active": active, "order_references": orderReferences}); err != nil {
 			apperrors.Internal(c)
 			return
 		}

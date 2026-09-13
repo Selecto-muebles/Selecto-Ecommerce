@@ -48,6 +48,7 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 		}
 		defer rows.Close()
 		items := []gin.H{}
+		productIDs := []int{}
 		for rows.Next() {
 			var id, stockValue int
 			var name, sku, description, category string
@@ -59,10 +60,32 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 				return
 			}
 			items = append(items, gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stockValue, "active": activeValue, "description": description, "category": category, "created_at": createdAt, "updated_at": updatedAt})
+			productIDs = append(productIDs, id)
 		}
 		if err := rows.Err(); err != nil {
 			apperrors.Internal(c)
 			return
+		}
+		rows.Close()
+		images, err := productImagesByProduct(c, db, productIDs)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		options, err := productOptionsByProduct(c, db, productIDs)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		for index, id := range productIDs {
+			items[index]["images"] = images[id]
+			if images[id] == nil {
+				items[index]["images"] = []productImageResponse{}
+			}
+			items[index]["options"] = options[id]
+			if options[id] == nil {
+				items[index]["options"] = []productOption{}
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{"items": items, "page": page.Page, "page_size": page.PageSize, "total": total})
 	}
