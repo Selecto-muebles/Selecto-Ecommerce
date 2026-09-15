@@ -117,7 +117,9 @@ func TestCategoryMigrationPreservesLegacyProductsAndRepeats(t *testing.T) {
 	}
 	_, err = tx.Exec(ctx, "DELETE FROM categories WHERE id IN (SELECT category_id FROM products WHERE name=$1)", name)
 	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+	// PostgreSQL 17 reports foreign_key_violation (23503), while PostgreSQL 18
+	// reports restrict_violation (23001) for this same ON DELETE RESTRICT rule.
+	if !errors.As(err, &pgErr) || (pgErr.Code != "23503" && pgErr.Code != "23001") {
 		t.Fatalf("referenced category deletion: got %v, want foreign key violation", err)
 	}
 }
