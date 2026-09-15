@@ -19,7 +19,7 @@ const carouselAvailable = `((s.target_kind='product' AND COALESCE(p.active,FALSE
 func (r CarouselStore) List(ctx context.Context, public bool) ([]editorial.Slide, error) {
 	rows, err := r.Pool.Query(ctx, `SELECT s.id,s.title,s.subtitle,s.alt_text,s.cta_label,s.target_kind,
  COALESCE(s.product_id,s.category_id,0),s.sort_order,s.active,s.version,`+carouselAvailable+`,
- COALESCE(p.name,c.name,'')`+carouselJoins+`WHERE NOT $1 OR (s.active AND `+carouselAvailable+`) ORDER BY s.sort_order,s.id LIMIT 20`, public)
+ COALESCE(p.name,c.name,''),COALESCE(c.slug,'')`+carouselJoins+`WHERE NOT $1 OR (s.active AND `+carouselAvailable+`) ORDER BY s.sort_order,s.id LIMIT 20`, public)
 	if err != nil {
 		return nil, err
 	}
@@ -28,11 +28,16 @@ func (r CarouselStore) List(ctx context.Context, public bool) ([]editorial.Slide
 	for rows.Next() {
 		var s editorial.Slide
 		var target int
-		if err := rows.Scan(&s.ID, &s.Title, &s.Subtitle, &s.AltText, &s.CTALabel, &s.TargetKind, &target, &s.SortOrder, &s.Active, &s.Version, &s.DestinationAvailable, &s.DestinationName); err != nil {
+		var categorySlug string
+		if err := rows.Scan(&s.ID, &s.Title, &s.Subtitle, &s.AltText, &s.CTALabel, &s.TargetKind, &target, &s.SortOrder, &s.Active, &s.Version, &s.DestinationAvailable, &s.DestinationName, &categorySlug); err != nil {
 			return nil, err
 		}
 		if target > 0 {
-			s.TargetID, s.Href = editorial.Destination(s.TargetKind, target, s.DestinationName)
+			destination := s.DestinationName
+			if s.TargetKind == "category" {
+				destination = categorySlug
+			}
+			s.TargetID, s.Href = editorial.Destination(s.TargetKind, target, destination)
 		}
 		s.ImageURL = fmt.Sprintf("/carousel-images/%d?v=%d", s.ID, s.Version)
 		if !public {

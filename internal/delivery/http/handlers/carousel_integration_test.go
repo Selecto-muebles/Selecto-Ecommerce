@@ -7,12 +7,69 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"strconv"
 	"testing"
+	"time"
 
 	"Selecto-Ecommerce/internal/repository/postgres"
 	"Selecto-Ecommerce/internal/service/editorial"
 	"Selecto-Ecommerce/internal/shared/utils"
 )
+
+func TestCarouselCategoryDestinationUsesCanonicalSlug(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	store := postgres.CarouselStore{Pool: pool}
+	suffix := time.Now().UnixNano()
+	name := fmt.Sprintf("Entrenamiento %d", suffix)
+	slug := fmt.Sprintf("entrenamiento-%d", suffix)
+	var categoryID int
+	if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug,active) VALUES ($1,$2,TRUE) RETURNING id`, name, slug).Scan(&categoryID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, "DELETE FROM categories WHERE id=$1", categoryID) })
+	var productID int
+	if err := pool.QueryRow(ctx, `INSERT INTO products(name,price,stock,category,category_id,active)
+	 VALUES ($1,100,1,$2,$3,TRUE) RETURNING id`, "Destino "+name, name, categoryID).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID) })
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	in := editorial.Input{
+		Title:      "Colección de " + name,
+		AltText:    "Equipamiento para " + name,
+		CTALabel:   "Ver categoría",
+		TargetKind: "category",
+		TargetID:   strconv.Itoa(categoryID),
+		Active:     true,
+	}
+	id, err := editorial.Save(ctx, store, 0, in, &editorial.Image{Content: buf.Bytes()}, "carousel@test.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM carousel_slides WHERE id=$1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM audit_logs WHERE entity_type='carousel_slide' AND entity_id=$1", id)
+	})
+
+	slides, err := store.List(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, slide := range slides {
+		if slide.ID == id {
+			if slide.DestinationName != name || slide.Href != "/?category="+slug {
+				t.Fatalf("category destination mismatch: %+v", slide)
+			}
+			return
+		}
+	}
+	t.Fatal("published category slide missing")
+}
 
 func TestCarouselPublicationConcurrencyAndDeletedDestination(t *testing.T) {
 	pool := integrationPool(t)
