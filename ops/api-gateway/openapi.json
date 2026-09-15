@@ -538,6 +538,30 @@
         ]
       }
     },
+    "/admin/product-reviews": {
+      "get": {
+        "operationId": "AdminListProductReviews",
+        "responses": { "200": { "description": "Reseñas para moderación" } },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "CorsAdminProductReviews",
+        "responses": { "204": { "description": "Preflight" } },
+        "parameters": []
+      }
+    },
+    "/admin/product-reviews/{id}": {
+      "patch": {
+        "operationId": "AdminModerateProductReview",
+        "responses": { "200": { "description": "Reseña moderada" } },
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "string" }]
+      },
+      "options": {
+        "operationId": "CorsAdminProductReview",
+        "responses": { "204": { "description": "Preflight" } },
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "string" }]
+      }
+    },
     "/admin/products": {
       "get": {
         "operationId": "AdminListProducts",
@@ -606,9 +630,7 @@
           "204": {
             "description": "Producto eliminado definitivamente"
           },
-          "409": {
-            "description": "El producto debe estar inactivo y no tener historial de órdenes"
-          }
+          "409": { "description": "Conflicto operativo" }
         },
         "parameters": [
           {
@@ -1204,6 +1226,23 @@
           }
         },
         "parameters": []
+      }
+    },
+    "/products/{id}/reviews": {
+      "get": {
+        "operationId": "ListProductReviews",
+        "responses": { "200": { "description": "Reseñas publicadas" } },
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "string" }]
+      },
+      "post": {
+        "operationId": "SubmitProductReview",
+        "responses": { "201": { "description": "Reseña enviada a moderación" } },
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "string" }]
+      },
+      "options": {
+        "operationId": "CorsProductReviews",
+        "responses": { "204": { "description": "Preflight" } },
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "string" }]
       }
     },
     "/ready": {

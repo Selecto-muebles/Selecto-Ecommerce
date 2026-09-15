@@ -38,6 +38,20 @@ func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 				return
 			}
 		}
+		specifications := productSpecifications{}
+		if input.Specifications != nil {
+			var err error
+			specifications, err = normalizeSpecifications(*input.Specifications)
+			if err != nil {
+				apperrors.BadRequest(c, err.Error())
+				return
+			}
+		}
+		specificationsJSON, err := encodeSpecifications(specifications)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		description, category := "", ""
 		if input.Description != nil {
 			description = strings.TrimSpace(*input.Description)
@@ -52,7 +66,7 @@ func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 		}
 		defer tx.Rollback(c)
 		var id int
-		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active, description, category).Scan(&id)
+		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, specifications, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active, description, category, specificationsJSON).Scan(&id)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -83,7 +97,7 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			apperrors.BadRequest(c, "invalid input")
 			return
 		}
-		if strings.TrimSpace(input.Name) == "" && input.Price == nil && strings.TrimSpace(input.SKU) == "" && input.Description == nil && input.Category == nil && input.Options == nil {
+		if strings.TrimSpace(input.Name) == "" && input.Price == nil && strings.TrimSpace(input.SKU) == "" && input.Description == nil && input.Category == nil && input.Options == nil && input.Specifications == nil {
 			apperrors.BadRequest(c, "at least one editable field is required")
 			return
 		}
@@ -92,8 +106,9 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			return
 		}
 		var beforeName, beforeSKU, beforeDescription, beforeCategory string
+		var beforeSpecificationsRaw []byte
 		var beforePrice float64
-		if err := db.Pool.QueryRow(c, "SELECT name, COALESCE(sku, ''), price, description, category FROM products WHERE id=$1", id).Scan(&beforeName, &beforeSKU, &beforePrice, &beforeDescription, &beforeCategory); err != nil {
+		if err := db.Pool.QueryRow(c, "SELECT name, COALESCE(sku, ''), price, description, category, specifications FROM products WHERE id=$1", id).Scan(&beforeName, &beforeSKU, &beforePrice, &beforeDescription, &beforeCategory, &beforeSpecificationsRaw); err != nil {
 			handleAdminLookupErr(c, err, "product not found")
 			return
 		}
@@ -116,13 +131,30 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 		if input.Category != nil {
 			category = strings.TrimSpace(*input.Category)
 		}
+		specifications, err := decodeSpecifications(beforeSpecificationsRaw)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		if input.Specifications != nil {
+			specifications, err = normalizeSpecifications(*input.Specifications)
+			if err != nil {
+				apperrors.BadRequest(c, err.Error())
+				return
+			}
+		}
+		specificationsJSON, err := encodeSpecifications(specifications)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
 			apperrors.Internal(c)
 			return
 		}
 		defer tx.Rollback(c)
-		if _, err := tx.Exec(c, "UPDATE products SET name=$1, sku=NULLIF($2, ''), price=$3, description=$4, category=$5, updated_at=NOW() WHERE id=$6", name, sku, price, description, category, id); err != nil {
+		if _, err := tx.Exec(c, "UPDATE products SET name=$1, sku=NULLIF($2, ''), price=$3, description=$4, category=$5, specifications=$6, updated_at=NOW() WHERE id=$7", name, sku, price, description, category, specificationsJSON, id); err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -161,9 +193,13 @@ func AdminUpdateProductStatusHandler(db *database.DB, logger *slog.Logger) gin.H
 			apperrors.BadRequest(c, "active is required")
 			return
 		}
-		var before bool
-		if err := db.Pool.QueryRow(c, "SELECT active FROM products WHERE id=$1", id).Scan(&before); err != nil {
+		var before, archived bool
+		if err := db.Pool.QueryRow(c, "SELECT active,archived_at IS NOT NULL FROM products WHERE id=$1", id).Scan(&before, &archived); err != nil {
 			handleAdminLookupErr(c, err, "product not found")
+			return
+		}
+		if archived && *input.Active {
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "archived product cannot be activated", nil)
 			return
 		}
 		if _, err := db.Pool.Exec(c, "UPDATE products SET active=$1, updated_at=NOW() WHERE id=$2", *input.Active, id); err != nil {

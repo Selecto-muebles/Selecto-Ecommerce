@@ -61,6 +61,7 @@ func SetupRouter(
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
 	r.GET("/categories", handlers.ListCategoriesHandler(db, true))
 	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
+	r.GET("/products/:id/reviews", handlers.ListProductReviewsHandler(db))
 	carousel := postgres.CarouselStore{Pool: db.Pool}
 	r.GET("/carousel-slides", handlers.ListCarouselHandler(carousel, true))
 	r.GET("/carousel-images/:id", handlers.CarouselImageHandler(carousel, true))
@@ -79,6 +80,7 @@ func SetupRouter(
 	authorized.POST("/orders/:id/cancel", handlers.CancelOrderHandler(db, cfg, logger, notifiers...))
 	authorized.GET("/my-orders", handlers.GetMyOrdersHandler(db))
 	authorized.POST("/checkout", handlers.CheckoutHandler(db, cfg, logger))
+	authorized.POST("/products/:id/reviews", handlers.SubmitProductReviewHandler(db))
 	authorized.POST("/auth/google/link", handlers.GoogleLinkHandler(db, cfg, logger, nil))
 
 	admin := authorized.Group("/")
@@ -103,6 +105,8 @@ func SetupRouter(
 	admin.POST("/admin/products/:id/images", handlers.AdminUploadProductImageHandler(db))
 	admin.PATCH("/admin/products/:id/images/:image_id", handlers.AdminUpdateProductImageHandler(db))
 	admin.DELETE("/admin/products/:id/images/:image_id", handlers.AdminDeleteProductImageHandler(db))
+	admin.GET("/admin/product-reviews", handlers.AdminListProductReviewsHandler(db))
+	admin.PATCH("/admin/product-reviews/:id", handlers.AdminModerateProductReviewHandler(db))
 	admin.GET("/admin/orders", handlers.AdminListOrdersHandler(db))
 	admin.GET("/admin/orders/:id", handlers.AdminGetOrderHandler(db))
 	admin.POST("/admin/orders/:id/cancel", handlers.AdminCancelOrderHandler(db, logger))

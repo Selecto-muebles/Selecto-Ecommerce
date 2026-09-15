@@ -13,8 +13,8 @@ func TestMigrationDefinitionsAreSortedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrationDefinitions() error = %v", err)
 	}
-	if len(definitions) != 15 {
-		t.Fatalf("migration count = %d, want 15", len(definitions))
+	if len(definitions) != 16 {
+		t.Fatalf("migration count = %d, want 16", len(definitions))
 	}
 	for index, migration := range definitions {
 		if len(migration.Checksum) != 64 || migration.Content == "" {
