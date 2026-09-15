@@ -56,7 +56,7 @@ jobs:
         run: bash scripts/check_architecture.sh
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ecommerce-coverage-pg17
           path: coverage.out
