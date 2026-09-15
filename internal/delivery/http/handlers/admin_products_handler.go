@@ -22,8 +22,16 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 		q := strings.TrimSpace(c.Query("q"))
 		active := nullableBoolQuery(c, "active")
 		stock := strings.TrimSpace(c.Query("stock"))
+		archived := nullableBoolQuery(c, "archived")
 		where := []string{"($1 = '' OR name ILIKE '%' || $1 || '%' OR COALESCE(sku, '') ILIKE '%' || $1 || '%')"}
 		args := []any{q}
+		if archived == nil {
+			where = append(where, "archived_at IS NULL")
+		} else if *archived {
+			where = append(where, "archived_at IS NOT NULL")
+		} else {
+			where = append(where, "archived_at IS NULL")
+		}
 		if active != nil {
 			args = append(args, *active)
 			where = append(where, fmt.Sprintf("active=$%d", len(args)))
@@ -41,7 +49,7 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		args = append(args, page.PageSize, page.Offset)
-		rows, err := db.Pool.Query(c, "SELECT id, name, COALESCE(sku, ''), price, stock, active, description, category, created_at, updated_at FROM products WHERE "+whereSQL+" ORDER BY "+adminservice.ProductSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
+		rows, err := db.Pool.Query(c, "SELECT id, name, COALESCE(sku, ''), price, stock, active, description, category, specifications, archived_at, created_at, updated_at FROM products WHERE "+whereSQL+" ORDER BY "+adminservice.ProductSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -54,12 +62,19 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 			var name, sku, description, category string
 			var price float64
 			var activeValue bool
+			var specificationsRaw []byte
+			var archivedAt *time.Time
 			var createdAt, updatedAt time.Time
-			if err := rows.Scan(&id, &name, &sku, &price, &stockValue, &activeValue, &description, &category, &createdAt, &updatedAt); err != nil {
+			if err := rows.Scan(&id, &name, &sku, &price, &stockValue, &activeValue, &description, &category, &specificationsRaw, &archivedAt, &createdAt, &updatedAt); err != nil {
 				apperrors.Internal(c)
 				return
 			}
-			items = append(items, gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stockValue, "active": activeValue, "description": description, "category": category, "created_at": createdAt, "updated_at": updatedAt})
+			specifications, err := decodeSpecifications(specificationsRaw)
+			if err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			items = append(items, gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stockValue, "active": activeValue, "description": description, "category": category, "specifications": specifications, "archived_at": archivedAt, "created_at": createdAt, "updated_at": updatedAt})
 			productIDs = append(productIDs, id)
 		}
 		if err := rows.Err(); err != nil {
@@ -108,11 +123,13 @@ func AdminGetProductHandler(db *database.DB) gin.HandlerFunc {
 
 func adminProduct(ctx context.Context, db *database.DB, id int) (gin.H, error) {
 	var name, sku, description, category string
+	var specificationsRaw []byte
+	var archivedAt *time.Time
 	var price float64
 	var stock int
 	var active bool
 	var createdAt, updatedAt time.Time
-	err := db.Pool.QueryRow(ctx, "SELECT name, COALESCE(sku, ''), price, stock, active, description, category, created_at, updated_at FROM products WHERE id=$1", id).Scan(&name, &sku, &price, &stock, &active, &description, &category, &createdAt, &updatedAt)
+	err := db.Pool.QueryRow(ctx, "SELECT name, COALESCE(sku, ''), price, stock, active, description, category, specifications, archived_at, created_at, updated_at FROM products WHERE id=$1", id).Scan(&name, &sku, &price, &stock, &active, &description, &category, &specificationsRaw, &archivedAt, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -124,5 +141,9 @@ func adminProduct(ctx context.Context, db *database.DB, id int) (gin.H, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "images": images, "options": options, "created_at": createdAt, "updated_at": updatedAt}, nil
+	specifications, err := decodeSpecifications(specificationsRaw)
+	if err != nil {
+		return nil, err
+	}
+	return gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "specifications": specifications, "archived_at": archivedAt, "images": images, "options": options, "created_at": createdAt, "updated_at": updatedAt}, nil
 }

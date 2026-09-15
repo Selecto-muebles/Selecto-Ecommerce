@@ -28,42 +28,7 @@ func GetAdminMeHandler(db *database.DB) gin.HandlerFunc {
 
 func GetAdminDashboardHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		now := time.Now().UTC()
-		dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-		var salesToday, salesMonth float64
-		var ordersPending, ordersPaid, ordersCancelled, productsActive, productsWithoutStock int
-		err := db.Pool.QueryRow(c, `
-			WITH sales AS (
-				SELECT
-					COALESCE(SUM(total) FILTER (WHERE COALESCE(paid_at, created_at) >= $1), 0) AS today,
-					COALESCE(SUM(total), 0) AS month
-				FROM orders
-				WHERE status='paid'
-				  AND COALESCE(paid_at, created_at) >= $2
-				  AND COALESCE(paid_at, created_at) < $3
-			), order_counts AS (
-				SELECT
-				COUNT(*) FILTER (WHERE status='pending'),
-				COUNT(*) FILTER (WHERE status='paid'),
-					COUNT(*) FILTER (WHERE status='cancelled')
-				FROM orders
-			), product_counts AS (
-				SELECT
-					COUNT(*) FILTER (WHERE active),
-					COUNT(*) FILTER (WHERE active AND stock=0)
-				FROM products
-			)
-			SELECT sales.*, order_counts.*, product_counts.*
-			FROM sales, order_counts, product_counts`, dayStart, monthStart, now).Scan(
-			&salesToday,
-			&salesMonth,
-			&ordersPending,
-			&ordersPaid,
-			&ordersCancelled,
-			&productsActive,
-			&productsWithoutStock,
-		)
+		metrics, err := adminCommercialMetrics(c, db, time.Now())
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -73,8 +38,9 @@ func GetAdminDashboardHandler(db *database.DB, logger *slog.Logger) gin.HandlerF
 			apperrors.Internal(c)
 			return
 		}
-		logger.Debug(logging.EventAdminMetricsRequested, "orders_paid", ordersPaid)
-		c.JSON(http.StatusOK, gin.H{"sales_today": salesToday, "sales_month": salesMonth, "orders_pending": ordersPending, "orders_paid": ordersPaid, "orders_cancelled": ordersCancelled, "products_active": productsActive, "products_without_stock": productsWithoutStock, "latest_orders": latestOrders})
+		metrics["latest_orders"] = latestOrders
+		logger.Debug(logging.EventAdminMetricsRequested, "orders_paid", metrics["orders_paid"])
+		c.JSON(http.StatusOK, metrics)
 	}
 }
 

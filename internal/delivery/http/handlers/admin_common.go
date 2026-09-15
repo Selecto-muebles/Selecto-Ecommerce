@@ -26,14 +26,15 @@ const (
 type adminPage struct{ Page, PageSize, Offset int }
 
 type adminProductInput struct {
-	Name        string           `json:"name"`
-	SKU         string           `json:"sku"`
-	Price       *float64         `json:"price"`
-	Stock       *int             `json:"stock"`
-	Active      *bool            `json:"active"`
-	Description *string          `json:"description"`
-	Category    *string          `json:"category"`
-	Options     *[]productOption `json:"options"`
+	Name           string                 `json:"name"`
+	SKU            string                 `json:"sku"`
+	Price          *float64               `json:"price"`
+	Stock          *int                   `json:"stock"`
+	Active         *bool                  `json:"active"`
+	Description    *string                `json:"description"`
+	Category       *string                `json:"category"`
+	Options        *[]productOption       `json:"options"`
+	Specifications *productSpecifications `json:"specifications"`
 }
 
 func adminPagination(c *gin.Context) adminPage {

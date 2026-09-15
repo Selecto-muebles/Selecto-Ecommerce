@@ -38,7 +38,22 @@ func AdminDeleteProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			return
 		}
 		if orderReferences > 0 {
-			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "product has order history and cannot be permanently deleted", gin.H{"order_references": orderReferences, "requires_archiving": true})
+			if _, err := tx.Exec(c, "UPDATE products SET active=FALSE, archived_at=COALESCE(archived_at,NOW()), updated_at=NOW() WHERE id=$1", id); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			if err := writeAuditTx(c, tx, adminActor(c), "product_archived", "product", id, gin.H{"name": name, "was_active": active, "order_references": orderReferences}); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			if err := tx.Commit(c); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+			logger.Info(logging.EventProductCreated, "event", "product_archived", "product_id", id)
+			c.Header("X-Deletion-Mode", "archived")
+			c.Status(http.StatusNoContent)
+			c.Writer.WriteHeaderNow()
 			return
 		}
 
@@ -57,5 +72,6 @@ func AdminDeleteProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 
 		logger.Info(logging.EventProductCreated, "event", "product_deleted", "product_id", id)
 		c.Status(http.StatusNoContent)
+		c.Writer.WriteHeaderNow()
 	}
 }

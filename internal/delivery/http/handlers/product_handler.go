@@ -19,15 +19,17 @@ type CreateProductInput struct {
 }
 
 type ProductResponse struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	Price        float64                `json:"price"`
-	Stock        int                    `json:"stock"`
-	Description  string                 `json:"description"`
-	Category     string                 `json:"category"`
-	CategorySlug string                 `json:"category_slug"`
-	Images       []productImageResponse `json:"images"`
-	Options      []productOption        `json:"options"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Price          float64                `json:"price"`
+	Stock          int                    `json:"stock"`
+	Description    string                 `json:"description"`
+	Category       string                 `json:"category"`
+	CategorySlug   string                 `json:"category_slug"`
+	Images         []productImageResponse `json:"images"`
+	Options        []productOption        `json:"options"`
+	Specifications productSpecifications  `json:"specifications"`
+	ReviewSummary  productReviewSummary   `json:"review_summary"`
 }
 
 func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
@@ -44,8 +46,8 @@ func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 }
 
 func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, error) {
-	rows, err := db.Pool.Query(c, `SELECT p.id,p.name,p.price,p.stock,p.description,p.category,COALESCE(c.slug,'')
-		FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.active=TRUE ORDER BY p.created_at DESC`)
+	rows, err := db.Pool.Query(c, `SELECT p.id,p.name,p.price,p.stock,p.description,p.category,COALESCE(c.slug,''),p.specifications
+		FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.active=TRUE AND p.archived_at IS NULL ORDER BY p.created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +58,12 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 	for rows.Next() {
 		var id int
 		var product ProductResponse
-		if err := rows.Scan(&id, &product.Name, &product.Price, &product.Stock, &product.Description, &product.Category, &product.CategorySlug); err != nil {
+		var specificationsRaw []byte
+		if err := rows.Scan(&id, &product.Name, &product.Price, &product.Stock, &product.Description, &product.Category, &product.CategorySlug, &specificationsRaw); err != nil {
+			return nil, err
+		}
+		product.Specifications, err = decodeSpecifications(specificationsRaw)
+		if err != nil {
 			return nil, err
 		}
 		product.ID = utils.EncodeID(id)
@@ -75,6 +82,10 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 	if err != nil {
 		return nil, err
 	}
+	reviewsByProduct, err := productReviewSummaries(c, db, productIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index, id := range productIDs {
 		products[index].Images = imagesByProduct[id]
 		if products[index].Images == nil {
@@ -84,6 +95,7 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 		if products[index].Options == nil {
 			products[index].Options = []productOption{}
 		}
+		products[index].ReviewSummary = reviewsByProduct[id]
 	}
 	return products, nil
 }
