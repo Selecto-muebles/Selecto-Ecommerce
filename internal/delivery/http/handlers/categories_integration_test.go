@@ -4,15 +4,79 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/repository/postgres"
 	"Selecto-Ecommerce/internal/service/catalog"
 	migrationfiles "Selecto-Ecommerce/migrations"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestPublicCatalogUsesCanonicalCategorySlugAndHidesEmptyCategories(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	suffix := time.Now().UnixNano()
+	name := fmt.Sprintf("Fuerza %d", suffix)
+	slug := fmt.Sprintf("fuerza-%d", suffix)
+	var categoryID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug,active) VALUES ($1,$2,TRUE) RETURNING id`, name, slug).Scan(&categoryID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, "DELETE FROM categories WHERE id=$1", categoryID) })
+
+	items, err := postgres.ListCategories(ctx, pool, true, 1000, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.ID == categoryID {
+			t.Fatal("empty category leaked into public navigation")
+		}
+	}
+
+	var productID int
+	if err := pool.QueryRow(ctx, `INSERT INTO products(name,price,stock,description,category,category_id,active)
+	 VALUES ($1,100,2,'Ficha comercial',$2,$3,TRUE) RETURNING id`, "Producto "+name, name, categoryID).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID) })
+
+	items, err = postgres.ListCategories(ctx, pool, true, 1000, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundCategory := false
+	for _, item := range items {
+		if item.ID == categoryID {
+			foundCategory = item.Name == name && item.Slug == slug
+		}
+	}
+	if !foundCategory {
+		t.Fatal("category with active inventory missing from public navigation")
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest("GET", "/products", nil)
+	products, err := fetchActiveProducts(c, &database.DB{Pool: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, product := range products {
+		if product.Name == "Producto "+name {
+			if product.Category != name || product.CategorySlug != slug {
+				t.Fatalf("category identity mismatch: %+v", product)
+			}
+			return
+		}
+	}
+	t.Fatal("active product missing from public catalog")
+}
 
 func TestCategoryMigrationPreservesLegacyProductsAndRepeats(t *testing.T) {
 	pool := integrationPool(t)

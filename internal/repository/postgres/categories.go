@@ -9,8 +9,9 @@ import (
 )
 
 func ListCategories(ctx context.Context, pool *pgxpool.Pool, public bool, limit, offset int) ([]catalog.Category, error) {
-	rows, err := pool.Query(ctx, `SELECT id,name,slug,active,sort_order FROM categories
- WHERE (NOT $1 OR active) ORDER BY sort_order,LOWER(name),id LIMIT $2 OFFSET $3`, public, limit, offset)
+	rows, err := pool.Query(ctx, `SELECT c.id,c.name,c.slug,c.active,c.sort_order FROM categories c
+ WHERE (NOT $1 OR (c.active AND EXISTS(SELECT 1 FROM products p WHERE p.category_id=c.id AND p.active)))
+ ORDER BY c.sort_order,LOWER(c.name),c.id LIMIT $2 OFFSET $3`, public, limit, offset)
 	if err != nil {
 		return nil, err
 	}

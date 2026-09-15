@@ -19,14 +19,15 @@ type CreateProductInput struct {
 }
 
 type ProductResponse struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Price       float64                `json:"price"`
-	Stock       int                    `json:"stock"`
-	Description string                 `json:"description"`
-	Category    string                 `json:"category"`
-	Images      []productImageResponse `json:"images"`
-	Options     []productOption        `json:"options"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Price        float64                `json:"price"`
+	Stock        int                    `json:"stock"`
+	Description  string                 `json:"description"`
+	Category     string                 `json:"category"`
+	CategorySlug string                 `json:"category_slug"`
+	Images       []productImageResponse `json:"images"`
+	Options      []productOption        `json:"options"`
 }
 
 func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
@@ -43,7 +44,8 @@ func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 }
 
 func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, error) {
-	rows, err := db.Pool.Query(c, "SELECT id, name, price, stock, description, category FROM products WHERE active = TRUE ORDER BY created_at DESC")
+	rows, err := db.Pool.Query(c, `SELECT p.id,p.name,p.price,p.stock,p.description,p.category,COALESCE(c.slug,'')
+		FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.active=TRUE ORDER BY p.created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +56,7 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 	for rows.Next() {
 		var id int
 		var product ProductResponse
-		if err := rows.Scan(&id, &product.Name, &product.Price, &product.Stock, &product.Description, &product.Category); err != nil {
+		if err := rows.Scan(&id, &product.Name, &product.Price, &product.Stock, &product.Description, &product.Category, &product.CategorySlug); err != nil {
 			return nil, err
 		}
 		product.ID = utils.EncodeID(id)
