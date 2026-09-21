@@ -56,6 +56,8 @@ func SetupRouter(
 	r.POST("/auth/email/resend", handlers.ResendVerificationHandler(db, cfg, notifiers...))
 	r.POST("/auth/password/forgot", handlers.ForgotPasswordHandler(db, cfg, notifiers...))
 	r.POST("/auth/password/reset", handlers.ResetPasswordHandler(db))
+	r.POST("/admin/auth/password/forgot", handlers.AdminForgotPasswordHandler(db, cfg, notifiers...))
+	r.POST("/admin/auth/password/reset", handlers.AdminResetPasswordHandler(db))
 	r.POST("/auth/google", handlers.GoogleAuthHandler(db, cfg, logger, nil))
 	r.POST("/auth/google/register", handlers.GoogleRegisterHandler(db, cfg, logger))
 	r.GET("/products", handlers.GetProductsHandler(db, logger))

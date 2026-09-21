@@ -102,6 +102,14 @@ func ResendVerificationHandler(db *database.DB, cfg *config.Config, notifiers ..
 }
 
 func ForgotPasswordHandler(db *database.DB, cfg *config.Config, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
+	return forgotPasswordHandler(db, cfg.StorefrontURL, "user", "reset", notifiers...)
+}
+
+func AdminForgotPasswordHandler(db *database.DB, cfg *config.Config, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
+	return forgotPasswordHandler(db, cfg.AdminURL, "admin", "admin-reset", notifiers...)
+}
+
+func forgotPasswordHandler(db *database.DB, baseURL, role, eventPrefix string, notifiers ...mailinfra.DispatchNotifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input emailInput
 		if c.ShouldBindJSON(&input) != nil {
@@ -117,7 +125,7 @@ func ForgotPasswordHandler(db *database.DB, cfg *config.Config, notifiers ...mai
 		defer tx.Rollback(c)
 		var userID int
 		var password sql.NullString
-		err = tx.QueryRow(c, "SELECT id, password FROM users WHERE email=$1 AND role='user' FOR UPDATE", email).Scan(&userID, &password)
+		err = tx.QueryRow(c, "SELECT id, password FROM users WHERE email=$1 AND role=$2 FOR UPDATE", email, role).Scan(&userID, &password)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !password.Valid) {
 			_ = tx.Commit(c)
 			c.JSON(http.StatusAccepted, gin.H{"message": "if the account exists, reset instructions will be sent"})
@@ -132,7 +140,7 @@ func ForgotPasswordHandler(db *database.DB, cfg *config.Config, notifiers ...mai
 			apperrors.Internal(c)
 			return
 		}
-		outboxID, err := mailinfra.EnqueueReturningID(c, tx, fmt.Sprintf("reset:%d:%s", userID, hashAccountToken(token)[:16]), email, "password_reset", gin.H{"url": accountURL(cfg.StorefrontURL, "/restablecer-contrasena", token)})
+		outboxID, err := mailinfra.EnqueueReturningID(c, tx, fmt.Sprintf("%s:%d:%s", eventPrefix, userID, hashAccountToken(token)[:16]), email, "password_reset", gin.H{"url": accountURL(baseURL, "/restablecer-contrasena", token)})
 		if err != nil {
 			apperrors.Internal(c)
 			return

@@ -30,6 +30,7 @@ type Config struct {
 	ReleaseWorkerBatchSize    int
 	ReleaseWorkerMaxBatches   int
 	StorefrontURL             string
+	AdminURL                  string
 	SMTPHost                  string
 	SMTPPort                  int
 	SMTPUsername              string
@@ -109,6 +110,9 @@ func (c *Config) Validate() error {
 		if c.StorefrontURL == "" {
 			return errors.New("STOREFRONT_URL is required in production")
 		}
+		if c.AdminURL == "" {
+			return errors.New("ADMIN_URL is required in production")
+		}
 		if c.PaymentsServiceURL == "" {
 			return errors.New("PAYMENTS_SERVICE_URL is required in production")
 		}
@@ -123,6 +127,9 @@ func (c *Config) Validate() error {
 		}
 		if !strings.HasPrefix(c.StorefrontURL, "https://") {
 			return errors.New("STOREFRONT_URL must use HTTPS in production")
+		}
+		if !strings.HasPrefix(c.AdminURL, "https://") {
+			return errors.New("ADMIN_URL must use HTTPS in production")
 		}
 		if allowsAllOrigins(c.CORSAllowedOrigins) {
 			return errors.New("CORS_ALLOWED_ORIGINS cannot allow all origins in production")

@@ -14,6 +14,14 @@ import (
 )
 
 func ResetPasswordHandler(db *database.DB) gin.HandlerFunc {
+	return resetPasswordHandler(db, "user", false)
+}
+
+func AdminResetPasswordHandler(db *database.DB) gin.HandlerFunc {
+	return resetPasswordHandler(db, "admin", true)
+}
+
+func resetPasswordHandler(db *database.DB, role string, audit bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input resetPasswordInput
 		if c.ShouldBindJSON(&input) != nil || len(input.Password) < 8 || len(input.Password) > maxBcryptPasswordBytes {
@@ -32,7 +40,8 @@ func ResetPasswordHandler(db *database.DB) gin.HandlerFunc {
 		}
 		defer tx.Rollback(c)
 		var userID int
-		err = tx.QueryRow(c, `SELECT user_id FROM account_tokens WHERE token_hash=$1 AND purpose='password_reset' AND consumed_at IS NULL AND expires_at > NOW() FOR UPDATE`, hashAccountToken(strings.TrimSpace(input.Token))).Scan(&userID)
+		var email string
+		err = tx.QueryRow(c, `SELECT t.user_id, u.email FROM account_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1 AND t.purpose='password_reset' AND t.consumed_at IS NULL AND t.expires_at > NOW() AND u.role=$2 FOR UPDATE OF t, u`, hashAccountToken(strings.TrimSpace(input.Token)), role).Scan(&userID, &email)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, "reset token is invalid or expired", nil)
@@ -48,6 +57,12 @@ func ResetPasswordHandler(db *database.DB) gin.HandlerFunc {
 		if _, err := tx.Exec(c, "UPDATE account_tokens SET consumed_at=NOW() WHERE user_id=$1 AND purpose='password_reset' AND consumed_at IS NULL", userID); err != nil {
 			apperrors.Internal(c)
 			return
+		}
+		if audit {
+			if _, err := tx.Exec(c, "INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, 'admin_password_reset', 'user', $2, '{}'::jsonb)", email, userID); err != nil {
+				apperrors.Internal(c)
+				return
+			}
 		}
 		if err := tx.Commit(c); err != nil {
 			apperrors.Internal(c)

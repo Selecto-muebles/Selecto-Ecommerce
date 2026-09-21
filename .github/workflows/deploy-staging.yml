@@ -70,7 +70,7 @@ jobs:
           go run ./cmd/api database audit
       - name: Validar contrato versionado del Gateway
         run: |
-          node -e 'const spec=require("./ops/api-gateway/openapi.json"); const required=["/health","/marketing/newsletter","/marketing/newsletter/unsubscribe","/admin/marketing/subscriptions","/admin/communications/outbox","/admin/payments/records/{record_id}","/products/{id}/reviews","/admin/product-reviews","/admin/product-reviews/{id}"]; if(Object.keys(spec.paths).length!==58||required.some(path=>!spec.paths[path]||!spec.paths[path].options)||!spec.paths["/admin/products/{id}"]?.delete){process.exit(1)}'
+          node -e 'const spec=require("./ops/api-gateway/openapi.json"); const required=["/health","/marketing/newsletter","/marketing/newsletter/unsubscribe","/admin/marketing/subscriptions","/admin/communications/outbox","/admin/payments/records/{record_id}","/products/{id}/reviews","/admin/product-reviews","/admin/product-reviews/{id}","/admin/auth/password/forgot","/admin/auth/password/reset"]; if(Object.keys(spec.paths).length!==60||required.some(path=>!spec.paths[path]||!spec.paths[path].options)||!spec.paths["/admin/products/{id}"]?.delete){process.exit(1)}'
       - name: Verificar formato
         run: test -z "$(gofmt -l .)"
       - run: bash scripts/check_source_size.sh
@@ -126,7 +126,7 @@ jobs:
           EXACT_IMAGE: ${{ steps.image.outputs.exact }}
         run: |
           gcloud run services update "${EMAIL_WORKER_SERVICE}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-email-worker,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
-          gcloud run services update "${API_SERVICE}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
+          gcloud run services update "${API_SERVICE}" --image="${EXACT_IMAGE}" --update-env-vars=ADMIN_URL=https://admin.selectosport.com --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
           gcloud run jobs update "${EXPIRATION_JOB}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
       - name: Verificar digest, disponibilidad y privacidad
         env:
