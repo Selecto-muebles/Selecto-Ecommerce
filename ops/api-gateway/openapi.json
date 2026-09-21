@@ -928,6 +928,38 @@
         "parameters": []
       }
     },
+    "/admin/auth/password/forgot": {
+      "post": {
+        "operationId": "AdminForgotPassword",
+        "responses": {
+          "202": {"description": "Respuesta neutra de recuperación administrativa"}
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "CorsAdminForgotPassword",
+        "responses": {
+          "204": {"description": "Preflight"}
+        },
+        "parameters": []
+      }
+    },
+    "/admin/auth/password/reset": {
+      "post": {
+        "operationId": "AdminResetPassword",
+        "responses": {
+          "200": {"description": "Contraseña administrativa actualizada"}
+        },
+        "parameters": []
+      },
+      "options": {
+        "operationId": "CorsAdminResetPassword",
+        "responses": {
+          "204": {"description": "Preflight"}
+        },
+        "parameters": []
+      }
+    },
     "/auth/password/forgot": {
       "post": {
         "operationId": "ForgotPassword",

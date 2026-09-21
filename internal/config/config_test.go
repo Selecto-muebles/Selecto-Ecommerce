@@ -200,6 +200,7 @@ func productionAPIConfig() Config {
 		DatabaseMaxConns: 10, DatabaseMinConns: 0, DatabaseMaxConnLifetime: 30 * time.Minute,
 		DatabaseMaxConnIdleTime: 5 * time.Minute, ReleaseWorkerBatchSize: 100,
 		ReleaseWorkerMaxBatches: 10, StorefrontURL: "https://tienda.example",
+		AdminURL:             "https://admin.tienda.example",
 		EmailWorkerBatchSize: 20, JobTimeout: 5 * time.Minute,
 	}
 }

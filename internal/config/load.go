@@ -36,6 +36,7 @@ func LoadConfig() *Config {
 		ReleaseWorkerBatchSize:    getIntEnv("RELEASE_WORKER_BATCH_SIZE", 100),
 		ReleaseWorkerMaxBatches:   getIntEnv("RELEASE_WORKER_MAX_BATCHES", 10),
 		StorefrontURL:             strings.TrimRight(getEnv("STOREFRONT_URL", "http://localhost:5173"), "/"),
+		AdminURL:                  strings.TrimRight(getEnv("ADMIN_URL", "http://localhost:5173"), "/"),
 		SMTPHost:                  strings.TrimSpace(getEnv("SMTP_HOST", "")),
 		SMTPPort:                  getIntEnv("SMTP_PORT", 587),
 		SMTPUsername:              strings.TrimSpace(getEnv("SMTP_USERNAME", "")),

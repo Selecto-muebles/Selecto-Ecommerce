@@ -1,9 +1,10 @@
 # API Gateway de Ecommerce durante el corte a Selecto
 
-`openapi.json` conserva las 50 rutas previas (incluidas categorías) y agrega
-5 rutas editoriales, para un total de 55. Mantiene los contratos existentes,
-incluidos `GET`/`OPTIONS /admin/payments/records/{record_id}` y
-`DELETE /admin/products/{id}`. El backend continúa siendo el Cloud Run privado
+`openapi.json` contiene las 60 rutas vigentes de Ecommerce, incluidas categorías,
+contenido editorial, reseñas y recuperación de acceso administrativo. Mantiene
+los contratos existentes, incluidos `GET`/`OPTIONS
+/admin/payments/records/{record_id}` y `DELETE /admin/products/{id}`. El backend
+continúa siendo el Cloud Run privado
 `destry-ecommerce-staging`; no se crea otro Gateway, servicio, red ni
 balanceador.
 
@@ -16,7 +17,7 @@ autenticado, comparación de rutas y una ventana de smoke controlada.
 - API: `destry-ecommerce-staging-api`.
 - Gateway: `destry-ecommerce-staging-gw` en `us-east1`.
 - Cuenta de backend: `destry-gateway@destry-development.iam.gserviceaccount.com`.
-- Configuración de rollback: `ecommerce-marketing-5d253a9-v4`.
+- Configuración de rollback: la API Config activa capturada antes de cada corte.
 
 ## Activación segura
 
@@ -37,9 +38,9 @@ gcloud api-gateway gateways update destry-ecommerce-staging-gw \
   --project=destry-development
 ```
 
-Antes de actualizar se debe capturar el ID ACTIVE para rollback y comprobar que
-la configuración compilada conserva las 50 rutas previas sin modificaciones,
-agregando únicamente las 5 editoriales. Después se prueban `/health`, catálogo, autenticación, CORS,
+Antes de actualizar se debe capturar el ID activo para rollback y comprobar que
+la configuración compilada conserva las 60 rutas esperadas. Después se prueban
+`/health`, catálogo, autenticación, CORS, recuperación administrativa,
 eliminación protegida de productos, newsletter, comunicaciones y detalle
 multiproveedor del Backoffice.
 
@@ -48,7 +49,7 @@ multiproveedor del Backoffice.
 ```bash
 gcloud api-gateway gateways update destry-ecommerce-staging-gw \
   --api=destry-ecommerce-staging-api \
-  --api-config=ecommerce-marketing-5d253a9-v4 \
+  --api-config=<config-id-anterior> \
   --location=us-east1 \
   --project=destry-development
 ```
