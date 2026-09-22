@@ -37,6 +37,8 @@ jobs:
           go-version: "1.25.13"
           cache: true
       - run: go mod verify
+      - name: Validar configuración segura de monitoreo
+        run: node --test scripts/gcp/monitoring.test.mjs
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - name: Apply migrations twice
         run: |
