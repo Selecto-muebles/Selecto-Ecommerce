@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -160,60 +159,6 @@ func GoogleRegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			return
 		}
 		respondWithSession(c, db, cfg, logger, userID, claims.Email, "user", "google_registration")
-	}
-}
-
-func GoogleLinkHandler(db *database.DB, cfg *config.Config, logger *slog.Logger, verifier GoogleIdentityVerifier) gin.HandlerFunc {
-	if verifier == nil {
-		verifier = newGoogleIdentityVerifier()
-	}
-	return func(c *gin.Context) {
-		identity, ok := verifyGoogleCredential(c, cfg, verifier, logger)
-		if !ok {
-			return
-		}
-		currentEmail, _ := c.Get("email")
-		role, _ := c.Get("role")
-		email := strings.ToLower(strings.TrimSpace(fmt.Sprint(currentEmail)))
-		if fmt.Sprint(role) != "user" || identity.Email != email {
-			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "Google email must match the authenticated customer", nil)
-			return
-		}
-		var userID int
-		if err := db.Pool.QueryRow(c, "SELECT id FROM users WHERE email=$1 AND role='user'", email).Scan(&userID); err != nil {
-			apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "user not found", nil)
-			return
-		}
-		var linkedSubject string
-		err := db.Pool.QueryRow(c, "SELECT provider_subject FROM user_identities WHERE user_id=$1 AND provider='google'", userID).Scan(&linkedSubject)
-		if err == nil {
-			if linkedSubject != identity.Subject {
-				apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "customer already linked to another Google account", nil)
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"linked": true})
-			return
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			apperrors.Internal(c)
-			return
-		}
-
-		command, err := db.Pool.Exec(c, `INSERT INTO user_identities (user_id, provider, provider_subject, provider_email)
-			VALUES ($1, 'google', $2, $3)`, userID, identity.Subject, identity.Email)
-		if err != nil {
-			if uniqueViolation(err) {
-				apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "Google account belongs to another user", nil)
-				return
-			}
-			apperrors.Internal(c)
-			return
-		}
-		if command.RowsAffected() > 0 {
-			_, _ = db.Pool.Exec(c, "INSERT INTO audit_logs (actor_email, action, entity_type, entity_id, metadata) VALUES ($1, 'google_account_linked', 'user', $2, $3)", email, userID, `{"provider":"google"}`)
-			_, _ = db.Pool.Exec(c, "UPDATE users SET email_verified_at=COALESCE(email_verified_at, NOW()) WHERE id=$1", userID)
-		}
-		c.JSON(http.StatusOK, gin.H{"linked": true})
 	}
 }
 
