@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -11,11 +12,14 @@ var ErrInvalidCategory = errors.New("category name and slug must be valid")
 var categorySlug = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 type Category struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	Active    bool   `json:"active"`
-	SortOrder int    `json:"sort_order"`
+	ID                 int64     `json:"id"`
+	Name               string    `json:"name"`
+	Slug               string    `json:"slug"`
+	Active             bool      `json:"active"`
+	SortOrder          int       `json:"sort_order"`
+	ProductCount       int       `json:"product_count"`
+	ActiveProductCount int       `json:"active_product_count"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 func NormalizeCategory(name, slug string) (Category, error) {
@@ -24,4 +28,13 @@ func NormalizeCategory(name, slug string) (Category, error) {
 		return Category{}, ErrInvalidCategory
 	}
 	return Category{Name: name, Slug: slug, Active: true}, nil
+}
+
+func NormalizeCategoryUpdate(name, slug string, sortOrder int) (Category, error) {
+	item, err := NormalizeCategory(name, slug)
+	if err != nil || sortOrder < 0 {
+		return Category{}, ErrInvalidCategory
+	}
+	item.SortOrder = sortOrder
+	return item, nil
 }

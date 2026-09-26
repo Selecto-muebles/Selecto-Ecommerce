@@ -21,12 +21,12 @@ func (w *Worker) ProcessOne(ctx context.Context, id int64) error {
 
 	subject, body, err := Render(email.Template, email.Payload)
 	if err == nil {
-		errorsByRecipient := w.mailer.SendBatch(
-			ctx,
-			[]string{email.Recipient},
-			[]string{subject},
-			[]string{body},
-		)
+		var errorsByRecipient []error
+		if tracked, ok := w.mailer.(TrackedMailer); ok {
+			errorsByRecipient = tracked.SendBatchTracked(ctx, []string{email.Recipient}, []string{subject}, []string{body}, []string{email.EventKey})
+		} else {
+			errorsByRecipient = w.mailer.SendBatch(ctx, []string{email.Recipient}, []string{subject}, []string{body})
+		}
 		if len(errorsByRecipient) != 1 {
 			err = errors.New("mailer returned an invalid result count")
 		} else {
@@ -40,7 +40,7 @@ func (w *Worker) ProcessOne(ctx context.Context, id int64) error {
 
 	command, err := w.db.Pool.Exec(ctx, `
 		UPDATE email_outbox
-		SET status='sent', sent_at=NOW(), locked_at=NULL, last_error='',
+		SET status='sent', delivery_status=CASE WHEN delivery_status='pending' THEN 'sent' ELSE delivery_status END, sent_at=NOW(), locked_at=NULL, last_error='',
 		    payload='{}'::jsonb, updated_at=NOW()
 		WHERE id=$1 AND status='processing'`, email.ID)
 	if err != nil {
@@ -67,8 +67,9 @@ func (w *Worker) claimOne(ctx context.Context, id int64) (queuedEmail, bool, err
 		SET status='processing', locked_at=NOW(), attempts=e.attempts+1, updated_at=NOW()
 		FROM candidate
 		WHERE e.id=candidate.id
-		RETURNING e.id, e.recipient, e.template, e.payload`, id).Scan(
+		RETURNING e.id, e.event_key, e.recipient, e.template, e.payload`, id).Scan(
 		&email.ID,
+		&email.EventKey,
 		&email.Recipient,
 		&email.Template,
 		&email.Payload,

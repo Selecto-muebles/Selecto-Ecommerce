@@ -67,8 +67,18 @@ func SetupRouter(
 	carousel := postgres.CarouselStore{Pool: db.Pool}
 	r.GET("/carousel-slides", handlers.ListCarouselHandler(carousel, true))
 	r.GET("/carousel-images/:id", handlers.CarouselImageHandler(carousel, true))
-	r.POST("/marketing/newsletter", handlers.NewsletterSubscribeHandler(db))
-	r.POST("/marketing/newsletter/unsubscribe", handlers.NewsletterUnsubscribeHandler(db))
+	marketingNotifiers := []mailinfra.MarketingDispatchNotifier{}
+	if cfg.BrevoContactsEnabled {
+		for _, notifier := range notifiers {
+			if marketingNotifier, ok := notifier.(mailinfra.MarketingDispatchNotifier); ok {
+				marketingNotifiers = append(marketingNotifiers, marketingNotifier)
+			}
+		}
+	}
+	r.POST("/marketing/newsletter", handlers.NewsletterSubscribeHandler(db, marketingNotifiers...))
+	r.POST("/marketing/newsletter/unsubscribe", handlers.NewsletterUnsubscribeHandler(db, cfg, notifiers...))
+	r.POST("/marketing/newsletter/unsubscribe/confirm", handlers.NewsletterUnsubscribeConfirmHandler(db, marketingNotifiers...))
+	r.POST("/communications/brevo/webhook", handlers.BrevoWebhookHandler(db, cfg))
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, cfg, logger, notifiers...))
 
 	authorized := r.Group("/")
@@ -92,6 +102,8 @@ func SetupRouter(
 	admin.GET("/admin/dashboard", handlers.GetAdminDashboardHandler(db, logger))
 	admin.GET("/admin/categories", handlers.ListCategoriesHandler(db, false))
 	admin.POST("/admin/categories", handlers.CreateCategoryHandler(db))
+	admin.PATCH("/admin/categories/reorder", handlers.ReorderCategoriesHandler(db))
+	admin.PATCH("/admin/categories/:id", handlers.UpdateCategoryHandler(db))
 	admin.GET("/admin/carousel-slides", handlers.ListCarouselHandler(carousel, false))
 	admin.POST("/admin/carousel-slides", handlers.SaveCarouselHandler(carousel, true))
 	admin.PATCH("/admin/carousel-slides/:id", handlers.SaveCarouselHandler(carousel, false))
@@ -107,16 +119,19 @@ func SetupRouter(
 	admin.POST("/admin/products/:id/images", handlers.AdminUploadProductImageHandler(db))
 	admin.PATCH("/admin/products/:id/images/:image_id", handlers.AdminUpdateProductImageHandler(db))
 	admin.DELETE("/admin/products/:id/images/:image_id", handlers.AdminDeleteProductImageHandler(db))
-	admin.GET("/admin/product-reviews", handlers.AdminListProductReviewsHandler(db))
-	admin.PATCH("/admin/product-reviews/:id", handlers.AdminModerateProductReviewHandler(db))
+	admin.GET("/admin/product-reviews", handlers.AdminOperationsListProductReviewsHandler(db))
+	admin.PATCH("/admin/product-reviews/:id", handlers.AdminOperationsModerateProductReviewHandler(db))
 	admin.GET("/admin/orders", handlers.AdminListOrdersHandler(db))
 	admin.GET("/admin/orders/:id", handlers.AdminGetOrderHandler(db))
 	admin.POST("/admin/orders/:id/cancel", handlers.AdminCancelOrderHandler(db, logger))
 	admin.PATCH("/admin/orders/:id/shipment", handlers.AdminUpdateShipmentHandler(db, cfg, logger, notifiers...))
 	admin.GET("/admin/customers", handlers.AdminListCustomersHandler(db))
 	admin.GET("/admin/customers/:id", handlers.AdminGetCustomerHandler(db))
-	admin.GET("/admin/marketing/subscriptions", handlers.AdminListMarketingSubscriptionsHandler(db))
-	admin.GET("/admin/communications/outbox", handlers.AdminListEmailOutboxHandler(db))
+	admin.GET("/admin/marketing/subscriptions", handlers.AdminOperationsListMarketingSubscriptionsHandler(db))
+	admin.GET("/admin/communications/outbox", handlers.AdminOperationsListEmailOutboxHandler(db))
+	admin.GET("/admin/communications/brevo/events", handlers.AdminListBrevoEventsHandler(db))
+	admin.GET("/admin/communications/brevo/status", handlers.AdminBrevoStatusHandler(db, cfg))
+	admin.POST("/admin/marketing/subscriptions/:id/sync", handlers.AdminRetryMarketingSyncHandler(db, cfg, marketingNotifiers...))
 	admin.GET("/admin/audit-logs", handlers.AdminListAuditLogsHandler(db))
 	admin.GET("/admin/audit-logs/entities/:entity_type/:entity_id", handlers.AdminListEntityAuditLogsHandler(db))
 	admin.GET("/admin/observability", handlers.AdminObservabilityHandler(db, cfg))

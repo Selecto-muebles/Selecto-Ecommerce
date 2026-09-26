@@ -14,6 +14,164 @@
     "protocol": "h2"
   },
   "paths": {
+    "/admin/categories/{id}": {
+      "patch": {
+        "operationId": "AdminUpdateCategory",
+        "responses": {
+          "200": {
+            "description": "AdminUpdateCategory"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "CorsAdminUpdateCategory",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "/admin/categories/reorder": {
+      "patch": {
+        "operationId": "AdminReorderCategories",
+        "responses": {
+          "204": {
+            "description": "AdminReorderCategories"
+          }
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminReorderCategories",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        }
+      }
+    },
+    "/marketing/newsletter/unsubscribe/confirm": {
+      "post": {
+        "operationId": "NewsletterUnsubscribeConfirm",
+        "responses": {
+          "200": {
+            "description": "NewsletterUnsubscribeConfirm"
+          }
+        }
+      },
+      "options": {
+        "operationId": "CorsNewsletterUnsubscribeConfirm",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        }
+      }
+    },
+    "/communications/brevo/webhook": {
+      "post": {
+        "operationId": "BrevoWebhook",
+        "responses": {
+          "204": {
+            "description": "BrevoWebhook"
+          }
+        }
+      },
+      "options": {
+        "operationId": "CorsBrevoWebhook",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        }
+      }
+    },
+    "/admin/communications/brevo/events": {
+      "get": {
+        "operationId": "AdminBrevoEvents",
+        "responses": {
+          "200": {
+            "description": "AdminBrevoEvents"
+          }
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminBrevoEvents",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        }
+      }
+    },
+    "/admin/communications/brevo/status": {
+      "get": {
+        "operationId": "AdminBrevoStatus",
+        "responses": {
+          "200": {
+            "description": "AdminBrevoStatus"
+          }
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminBrevoStatus",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        }
+      }
+    },
+    "/admin/marketing/subscriptions/{id}/sync": {
+      "post": {
+        "operationId": "AdminRetryMarketingSync",
+        "responses": {
+          "202": {
+            "description": "AdminRetryMarketingSync"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "options": {
+        "operationId": "CorsAdminRetryMarketingSync",
+        "responses": {
+          "204": {
+            "description": "Preflight"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
+    },
     "/carousel-slides": {
       "get": {"operationId":"ListCarouselSlides","responses":{"200":{"description":"Diapositivas publicadas disponibles"}}},
       "options": {"operationId":"CorsCarouselSlides","responses":{"204":{"description":"Preflight"}}}

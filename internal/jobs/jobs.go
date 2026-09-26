@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"Selecto-Ecommerce/internal/config"
@@ -52,9 +53,10 @@ func runEmailOutbox(ctx context.Context, db *database.DB, cfg *config.Config, lo
 		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername,
 		Password: cfg.SMTPPassword, From: cfg.SMTPFrom, TLSMode: cfg.SMTPTLSMode,
 	}), logger, 0, cfg.EmailWorkerBatchSize)
-	processed, err := worker.ProcessBatch(ctx)
-	logger.Info("email_outbox_job_completed", "emails_processed", processed, "failed", err != nil)
-	return processed, err
+	emailProcessed, emailErr := worker.ProcessBatch(ctx)
+	marketingProcessed, marketingErr := runMarketingSync(ctx, db, cfg, logger)
+	logger.Info("email_outbox_job_completed", "emails_processed", emailProcessed, "marketing_processed", marketingProcessed, "failed", emailErr != nil || marketingErr != nil)
+	return emailProcessed + marketingProcessed, errors.Join(emailErr, marketingErr)
 }
 
 type unknownJobError string

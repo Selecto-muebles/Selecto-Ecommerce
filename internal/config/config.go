@@ -37,6 +37,12 @@ type Config struct {
 	SMTPPassword              string
 	SMTPFrom                  string
 	SMTPTLSMode               string
+	BrevoContactsEnabled      bool
+	BrevoAPIKey               string
+	BrevoListID               int
+	BrevoAPIBaseURL           string
+	BrevoWebhookToken         string
+	MarketingWorkerBatchSize  int
 	EmailWorkerInterval       time.Duration
 	EmailWorkerBatchSize      int
 	EmbeddedWorkers           bool
@@ -100,6 +106,9 @@ func (c *Config) Validate() error {
 	if err := c.validateEmailTasks(); err != nil {
 		return err
 	}
+	if err := c.validateBrevo(); err != nil {
+		return err
+	}
 	if isCloudRunURL(c.PaymentsServiceURL) && c.PaymentsIDTokenAudience == "" {
 		return errors.New("PAYMENTS_ID_TOKEN_AUDIENCE is required for a private Cloud Run payments service")
 	}
@@ -158,6 +167,9 @@ func (c *Config) ValidateJob(name string) error {
 			return errors.New("EMAIL_WORKER_BATCH_SIZE must be between 1 and 100")
 		}
 		if err := c.validateSMTP(); err != nil {
+			return err
+		}
+		if err := c.validateBrevo(); err != nil {
 			return err
 		}
 	default:

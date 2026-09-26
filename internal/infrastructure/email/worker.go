@@ -19,6 +19,7 @@ type Worker struct {
 
 type queuedEmail struct {
 	ID        int64
+	EventKey  string
 	Recipient string
 	Template  string
 	Payload   json.RawMessage
@@ -60,6 +61,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) (int, error) {
 	}
 
 	recipients := make([]string, len(emails))
+	eventKeys := make([]string, len(emails))
 	subjects := make([]string, len(emails))
 	bodies := make([]string, len(emails))
 	renderErrors := make([]error, len(emails))
@@ -70,6 +72,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) (int, error) {
 			renderErrors[i] = err
 		} else {
 			recipients[i] = e.Recipient
+			eventKeys[i] = e.EventKey
 			subjects[i] = subject
 			bodies[i] = body
 		}
@@ -80,6 +83,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) (int, error) {
 	var sendRecipients []string
 	var sendSubjects []string
 	var sendBodies []string
+	var sendEventKeys []string
 
 	for i, err := range renderErrors {
 		if err == nil {
@@ -87,12 +91,17 @@ func (w *Worker) ProcessBatch(ctx context.Context) (int, error) {
 			sendRecipients = append(sendRecipients, recipients[i])
 			sendSubjects = append(sendSubjects, subjects[i])
 			sendBodies = append(sendBodies, bodies[i])
+			sendEventKeys = append(sendEventKeys, eventKeys[i])
 		}
 	}
 
 	var sendErrors []error
 	if len(sendRecipients) > 0 {
-		sendErrors = w.mailer.SendBatch(ctx, sendRecipients, sendSubjects, sendBodies)
+		if tracked, ok := w.mailer.(TrackedMailer); ok {
+			sendErrors = tracked.SendBatchTracked(ctx, sendRecipients, sendSubjects, sendBodies, sendEventKeys)
+		} else {
+			sendErrors = w.mailer.SendBatch(ctx, sendRecipients, sendSubjects, sendBodies)
+		}
 	}
 
 	var firstError error
@@ -120,7 +129,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) (int, error) {
 			continue
 		}
 
-		if _, err := w.db.Pool.Exec(ctx, `UPDATE email_outbox SET status='sent', sent_at=NOW(), locked_at=NULL, last_error='', payload='{}'::jsonb, updated_at=NOW() WHERE id=$1`, e.ID); err != nil {
+		if _, err := w.db.Pool.Exec(ctx, `UPDATE email_outbox SET status='sent', delivery_status=CASE WHEN delivery_status='pending' THEN 'sent' ELSE delivery_status END, sent_at=NOW(), locked_at=NULL, last_error='', payload='{}'::jsonb, updated_at=NOW() WHERE id=$1`, e.ID); err != nil {
 			if firstError == nil {
 				firstError = err
 			}
@@ -147,7 +156,7 @@ func (w *Worker) claimBatch(ctx context.Context, limit int) ([]queuedEmail, erro
 		SET status='processing', locked_at=NOW(), attempts=e.attempts+1, updated_at=NOW()
 		FROM candidate
 		WHERE e.id=candidate.id
-		RETURNING e.id, e.recipient, e.template, e.payload`,
+		RETURNING e.id, e.event_key, e.recipient, e.template, e.payload`,
 		limit,
 	)
 	if err != nil {
@@ -158,7 +167,7 @@ func (w *Worker) claimBatch(ctx context.Context, limit int) ([]queuedEmail, erro
 	var emails []queuedEmail
 	for rows.Next() {
 		var e queuedEmail
-		if err := rows.Scan(&e.ID, &e.Recipient, &e.Template, &e.Payload); err != nil {
+		if err := rows.Scan(&e.ID, &e.EventKey, &e.Recipient, &e.Template, &e.Payload); err != nil {
 			return nil, err
 		}
 		emails = append(emails, e)

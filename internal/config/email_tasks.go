@@ -15,6 +15,9 @@ func (c *Config) ValidateEmailTaskWorker() error {
 	if err := c.validateSMTP(); err != nil {
 		return err
 	}
+	if err := c.validateBrevo(); err != nil {
+		return err
+	}
 	if c.JobTimeout <= 0 || c.JobTimeout > time.Hour {
 		return errors.New("JOB_TIMEOUT must be positive and at most 1h")
 	}

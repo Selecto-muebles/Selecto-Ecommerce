@@ -16,27 +16,33 @@ type AuditReport struct {
 }
 
 var requiredCommerceColumns = map[string][]string{
-	"carousel_slides":          {"id", "title", "subtitle", "alt_text", "cta_label", "target_kind", "product_id", "category_id", "sort_order", "active", "version", "mime_type", "content", "created_at", "updated_at"},
-	"categories":               {"id", "name", "slug", "active", "sort_order", "created_at"},
-	"schema_migrations":        {"version", "checksum", "applied_at"},
-	"products":                 {"id", "name", "price", "stock", "active", "sku", "description", "category", "category_id", "specifications", "archived_at", "created_at", "updated_at"},
-	"product_reviews":          {"id", "product_id", "user_id", "order_id", "rating", "title", "comment", "status", "moderated_by", "moderated_at", "created_at", "updated_at"},
-	"users":                    {"id", "email", "password", "role", "first_name", "last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "email_verified_at", "session_version"},
-	"orders":                   {"id", "user_id", "status", "total", "created_at", "expires_at", "paid_at", "cancelled_at", "payment_status", "payment_id", "active_payment_preference_id", "active_checkout_url", "active_payment_environment", "idempotency_key", "request_hash", "payment_provider", "provider_payment_id"},
-	"order_items":              {"id", "order_id", "product_id", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
-	"payment_webhook_events":   {"id", "event_key", "payment_id", "order_id", "status", "amount_cents", "received_at", "processed_at", "result", "payment_provider", "provider_payment_id"},
-	"audit_logs":               {"id", "actor_email", "action", "entity_type", "entity_id", "metadata", "created_at"},
-	"product_images":           {"id", "product_id", "mime_type", "alt_text", "sort_order", "content", "size_bytes", "created_at"},
-	"product_options":          {"id", "product_id", "name", "values", "sort_order"},
-	"user_identities":          {"id", "user_id", "provider", "provider_subject", "provider_email", "created_at"},
-	"order_shipping_addresses": {"order_id", "recipient_first_name", "recipient_last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "requested_delivery_date", "created_at"},
-	"shipments":                {"id", "order_id", "status", "carrier", "tracking_number", "tracking_url", "estimated_delivery_at", "shipped_at", "delivered_at", "customer_note", "created_at", "updated_at"},
-	"account_tokens":           {"id", "user_id", "purpose", "token_hash", "expires_at", "consumed_at", "created_at"},
-	"email_outbox":             {"id", "event_key", "recipient", "template", "payload", "status", "attempts", "next_attempt_at", "locked_at", "sent_at", "last_error", "created_at", "updated_at"},
-	"marketing_subscriptions":  {"id", "email", "status", "source", "consent_at", "unsubscribed_at", "created_at", "updated_at"},
+	"marketing_sync_outbox":        {"id", "event_key", "subscription_id", "email", "operation", "subscription_version", "status", "attempts", "next_attempt_at", "locked_at", "completed_at", "last_error"},
+	"marketing_unsubscribe_tokens": {"id", "email", "token_hash", "expires_at", "consumed_at"},
+	"brevo_webhook_events":         {"event_key", "event_type", "event_scope", "email", "provider_message_id", "outbox_event_key", "occurred_at"},
+	"carousel_slides":              {"id", "title", "subtitle", "alt_text", "cta_label", "target_kind", "product_id", "category_id", "sort_order", "active", "version", "mime_type", "content", "created_at", "updated_at"},
+	"categories":                   {"id", "name", "slug", "active", "sort_order", "created_at"},
+	"schema_migrations":            {"version", "checksum", "applied_at"},
+	"products":                     {"id", "name", "price", "stock", "active", "sku", "description", "category", "category_id", "specifications", "archived_at", "created_at", "updated_at"},
+	"product_reviews":              {"id", "product_id", "user_id", "order_id", "rating", "title", "comment", "status", "moderated_by", "moderated_at", "created_at", "updated_at"},
+	"users":                        {"id", "email", "password", "role", "first_name", "last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "email_verified_at", "session_version"},
+	"orders":                       {"id", "user_id", "status", "total", "created_at", "expires_at", "paid_at", "cancelled_at", "payment_status", "payment_id", "active_payment_preference_id", "active_checkout_url", "active_payment_environment", "idempotency_key", "request_hash", "payment_provider", "provider_payment_id"},
+	"order_items":                  {"id", "order_id", "product_id", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
+	"payment_webhook_events":       {"id", "event_key", "payment_id", "order_id", "status", "amount_cents", "received_at", "processed_at", "result", "payment_provider", "provider_payment_id"},
+	"audit_logs":                   {"id", "actor_email", "action", "entity_type", "entity_id", "metadata", "created_at"},
+	"product_images":               {"id", "product_id", "mime_type", "alt_text", "sort_order", "content", "size_bytes", "created_at"},
+	"product_options":              {"id", "product_id", "name", "values", "sort_order"},
+	"user_identities":              {"id", "user_id", "provider", "provider_subject", "provider_email", "created_at"},
+	"order_shipping_addresses":     {"order_id", "recipient_first_name", "recipient_last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "requested_delivery_date", "created_at"},
+	"shipments":                    {"id", "order_id", "status", "carrier", "tracking_number", "tracking_url", "estimated_delivery_at", "shipped_at", "delivered_at", "customer_note", "created_at", "updated_at"},
+	"account_tokens":               {"id", "user_id", "purpose", "token_hash", "expires_at", "consumed_at", "created_at"},
+	"email_outbox":                 {"id", "event_key", "recipient", "template", "payload", "status", "attempts", "next_attempt_at", "locked_at", "sent_at", "last_error", "created_at", "updated_at"},
+	"marketing_subscriptions":      {"id", "email", "status", "source", "consent_at", "unsubscribed_at", "created_at", "updated_at"},
 }
 
 var requiredCommerceIndexes = []string{
+	"idx_marketing_sync_outbox_due",
+	"idx_marketing_unsubscribe_tokens_active",
+	"idx_brevo_webhook_events_created",
 	"idx_carousel_order",
 	"idx_orders_user_id",
 	"idx_orders_status_expires_at",
@@ -72,7 +78,7 @@ func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
 	}
 	for table, columns := range requiredCommerceColumns {
 		schema := currentSchema
-		if table == "marketing_subscriptions" {
+		if strings.HasPrefix(table, "marketing_") {
 			schema = "commerce"
 		}
 		if err := auditTableColumns(ctx, pool, schema, table, columns); err != nil {
@@ -80,6 +86,9 @@ func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
 		}
 	}
 	if err := auditMigrationChecksums(ctx, pool); err != nil {
+		return AuditReport{}, err
+	}
+	if err := auditCommunicationOperations(ctx, pool, currentSchema); err != nil {
 		return AuditReport{}, err
 	}
 	if err := auditNamedIndexes(ctx, pool, currentSchema, requiredCommerceIndexes); err != nil {
@@ -91,7 +100,11 @@ func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
 	if err := auditCommerceColumnContracts(ctx, pool, currentSchema); err != nil {
 		return AuditReport{}, err
 	}
-	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: 16, Indexes: len(requiredCommerceIndexes)}, nil
+	definitions, err := migrationDefinitions()
+	if err != nil {
+		return AuditReport{}, err
+	}
+	return AuditReport{Tables: len(requiredCommerceColumns), Migrations: len(definitions), Indexes: len(requiredCommerceIndexes)}, nil
 }
 
 func databaseSchema(ctx context.Context, pool *pgxpool.Pool) (string, error) {
@@ -178,7 +191,7 @@ func auditMigrationChecksums(ctx context.Context, pool *pgxpool.Pool) error {
 func auditNamedIndexes(ctx context.Context, pool *pgxpool.Pool, schema string, required []string) error {
 	for _, name := range required {
 		indexSchema := schema
-		if name == "idx_marketing_subscriptions_email" {
+		if strings.HasPrefix(name, "idx_marketing_") {
 			indexSchema = "commerce"
 		}
 		var exists bool

@@ -28,10 +28,24 @@ func GetAdminMeHandler(db *database.DB) gin.HandlerFunc {
 
 func GetAdminDashboardHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		metrics, err := adminCommercialMetrics(c, db, time.Now())
+		now := time.Now()
+		period, valid := dashboardPeriod(c.Query("period"), now)
+		if !valid {
+			apperrors.BadRequest(c, "period must be 7d, 30d or 90d")
+			return
+		}
+		metrics, err := adminCommercialMetrics(c, db, now)
 		if err != nil {
 			apperrors.Internal(c)
 			return
+		}
+		comparable, err := adminComparableMetrics(c, db, period)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
+		for key, value := range comparable {
+			metrics[key] = value
 		}
 		latestOrders, err := adminLatestOrders(c, db, 10)
 		if err != nil {
@@ -39,7 +53,7 @@ func GetAdminDashboardHandler(db *database.DB, logger *slog.Logger) gin.HandlerF
 			return
 		}
 		metrics["latest_orders"] = latestOrders
-		logger.Debug(logging.EventAdminMetricsRequested, "orders_paid", metrics["orders_paid"])
+		logger.Debug(logging.EventAdminMetricsRequested, "orders_paid", metrics["orders_paid"], "period", period.Key)
 		c.JSON(http.StatusOK, metrics)
 	}
 }
