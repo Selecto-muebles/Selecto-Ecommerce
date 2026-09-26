@@ -221,6 +221,7 @@ func AdminUpdateShipmentHandler(db *database.DB, cfg *config.Config, logger *slo
 			    tracking_url=$4,
 			    estimated_delivery_at=$5,
 			    customer_note=$6,
+			    status_changed_at=CASE WHEN status<>$1 THEN NOW() ELSE status_changed_at END,
 			    shipped_at=CASE WHEN $1='shipped' AND status <> 'shipped' THEN NOW() ELSE shipped_at END,
 			    delivered_at=CASE WHEN $1='delivered' AND status <> 'delivered' THEN NOW() ELSE delivered_at END,
 			    updated_at=NOW()

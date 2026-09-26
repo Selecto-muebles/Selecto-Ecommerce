@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,8 @@ func TestMarketingSubscriptionLifecycle(t *testing.T) {
 	db := &database.DB{Pool: pool}
 	email := fmt.Sprintf("newsletter-%d@selecto.test", time.Now().UnixNano())
 	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), "DELETE FROM email_outbox WHERE recipient=$1", email)
+		_, _ = pool.Exec(context.Background(), "DELETE FROM commerce.marketing_unsubscribe_tokens WHERE email=$1", email)
 		_, _ = pool.Exec(context.Background(), "DELETE FROM marketing_subscriptions WHERE email=$1", email)
 	})
 
@@ -76,16 +79,16 @@ func TestMarketingSubscriptionLifecycle(t *testing.T) {
 		bytes.NewBufferString(fmt.Sprintf(`{"email":%q}`, email)),
 	)
 	unsubscribeContext.Request.Header.Set("Content-Type", "application/json")
-	NewsletterUnsubscribeHandler(db)(unsubscribeContext)
-	if unsubscribe.Code != http.StatusOK {
+	NewsletterUnsubscribeHandler(db, &config.Config{StorefrontURL: "https://selectosport.com"})(unsubscribeContext)
+	if unsubscribe.Code != http.StatusAccepted {
 		t.Fatalf("unsubscribe status = %d body=%s", unsubscribe.Code, unsubscribe.Body.String())
 	}
 	var status string
 	if err := pool.QueryRow(context.Background(), "SELECT status FROM marketing_subscriptions WHERE email=$1", email).Scan(&status); err != nil {
 		t.Fatalf("read subscription: %v", err)
 	}
-	if status != "unsubscribed" {
-		t.Fatalf("subscription status = %q, want unsubscribed", status)
+	if status != "subscribed" {
+		t.Fatalf("unsubscribe without proof changed status to %q", status)
 	}
 }
 

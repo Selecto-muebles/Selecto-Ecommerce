@@ -95,7 +95,8 @@ func main() {
 	}
 	if emailTaskWorker {
 		worker := newEmailWorker(db, cfg, logger)
-		serveHTTP(appCtx, cfg, logger, httpDelivery.SetupEmailTaskRouter(db, cfg, logger, worker))
+		marketingWorker := newMarketingWorker(db, cfg, logger)
+		serveHTTP(appCtx, cfg, logger, httpDelivery.SetupCommunicationsTaskRouter(db, cfg, logger, worker, marketingWorker))
 		return
 	}
 	if cfg.EmbeddedWorkers {

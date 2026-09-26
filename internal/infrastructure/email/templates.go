@@ -36,6 +36,8 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 		}
 		content += button("Ver detalle", value("url"))
 		return "Actualización de entrega de la orden " + value("order_id"), wrapper(content), nil
+	case "newsletter_unsubscribe":
+		return "Confirmá la baja de novedades Selecto", wrapper(`<h2>Confirmá tu baja</h2><p>Recibimos una solicitud para dejar de recibir novedades comerciales. El enlace vence en 30 minutos.</p>` + button("Confirmar baja", value("url"))), nil
 	default:
 		return "", "", fmt.Errorf("unknown email template %q", template)
 	}

@@ -31,11 +31,7 @@ type TaskDispatcher struct {
 	logger *slog.Logger
 }
 
-func NewTaskDispatcher(
-	ctx context.Context,
-	config TaskDispatcherConfig,
-	logger *slog.Logger,
-) (*TaskDispatcher, error) {
+func NewTaskDispatcher(ctx context.Context, config TaskDispatcherConfig, logger *slog.Logger) (*TaskDispatcher, error) {
 	client, err := cloudtasks.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create cloud tasks client: %w", err)
@@ -43,48 +39,56 @@ func NewTaskDispatcher(
 	config.WorkerURL = strings.TrimRight(config.WorkerURL, "/")
 	config.Audience = strings.TrimRight(config.Audience, "/")
 	return &TaskDispatcher{
-		client: client,
-		config: config,
-		parent: fmt.Sprintf(
-			"projects/%s/locations/%s/queues/%s",
-			config.Project,
-			config.Location,
-			config.Queue,
-		),
+		client: client, config: config,
+		parent: fmt.Sprintf("projects/%s/locations/%s/queues/%s", config.Project, config.Location, config.Queue),
 		logger: logger,
 	}, nil
 }
 
-func (d *TaskDispatcher) Close() error {
-	return d.client.Close()
+func (dispatcher *TaskDispatcher) Close() error { return dispatcher.client.Close() }
+
+func (dispatcher *TaskDispatcher) Notify(ctx context.Context, outboxID int64) {
+	dispatcher.notify(ctx, "email", outboxID, "/internal/tasks/email-outbox", "outbox_id")
 }
 
-func (d *TaskDispatcher) Notify(ctx context.Context, outboxID int64) {
-	dispatchCtx, cancel := context.WithTimeout(ctx, d.config.Timeout)
+func (dispatcher *TaskDispatcher) NotifyMarketing(ctx context.Context, syncID int64) {
+	dispatcher.notify(ctx, "marketing", syncID, "/internal/tasks/marketing-sync", "sync_id")
+}
+
+func (dispatcher *TaskDispatcher) notify(ctx context.Context, kind string, id int64, path, bodyKey string) {
+	dispatchCtx, cancel := context.WithTimeout(ctx, dispatcher.config.Timeout)
 	defer cancel()
-	if err := d.Dispatch(dispatchCtx, outboxID); err != nil {
-		d.logger.Error("email_task_enqueue_failed", "email_id", outboxID, "error", err)
+	if err := dispatcher.dispatch(dispatchCtx, kind, id, path, bodyKey); err != nil {
+		dispatcher.logger.Error(kind+"_task_enqueue_failed", "item_id", id, "error", err)
 	}
 }
 
-func (d *TaskDispatcher) Dispatch(ctx context.Context, outboxID int64) error {
-	body, err := json.Marshal(map[string]int64{"outbox_id": outboxID})
+func (dispatcher *TaskDispatcher) Dispatch(ctx context.Context, outboxID int64) error {
+	return dispatcher.dispatch(ctx, "email", outboxID, "/internal/tasks/email-outbox", "outbox_id")
+}
+
+func (dispatcher *TaskDispatcher) DispatchMarketing(ctx context.Context, syncID int64) error {
+	return dispatcher.dispatch(ctx, "marketing", syncID, "/internal/tasks/marketing-sync", "sync_id")
+}
+
+func (dispatcher *TaskDispatcher) dispatch(ctx context.Context, kind string, id int64, path, bodyKey string) error {
+	body, err := json.Marshal(map[string]int64{bodyKey: id})
 	if err != nil {
-		return fmt.Errorf("marshal email task: %w", err)
+		return fmt.Errorf("marshal %s task: %w", kind, err)
 	}
-	taskName := fmt.Sprintf("%s/tasks/email-%d", d.parent, outboxID)
-	_, err = d.client.CreateTask(ctx, &taskspb.CreateTaskRequest{
-		Parent: d.parent,
+	taskName := fmt.Sprintf("%s/tasks/%s-%d", dispatcher.parent, kind, id)
+	_, err = dispatcher.client.CreateTask(ctx, &taskspb.CreateTaskRequest{
+		Parent: dispatcher.parent,
 		Task: &taskspb.Task{
 			Name: taskName,
 			MessageType: &taskspb.Task_HttpRequest{HttpRequest: &taskspb.HttpRequest{
 				HttpMethod: taskspb.HttpMethod_POST,
-				Url:        d.config.WorkerURL + "/internal/tasks/email-outbox",
+				Url:        dispatcher.config.WorkerURL + path,
 				Headers:    map[string]string{"Content-Type": "application/json"},
 				Body:       body,
 				AuthorizationHeader: &taskspb.HttpRequest_OidcToken{OidcToken: &taskspb.OidcToken{
-					ServiceAccountEmail: d.config.ServiceAccount,
-					Audience:            d.config.Audience,
+					ServiceAccountEmail: dispatcher.config.ServiceAccount,
+					Audience:            dispatcher.config.Audience,
 				}},
 			}},
 		},
@@ -93,8 +97,8 @@ func (d *TaskDispatcher) Dispatch(ctx context.Context, outboxID int64) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("create email task: %w", err)
+		return fmt.Errorf("create %s task: %w", kind, err)
 	}
-	d.logger.Info("email_task_enqueued", "email_id", outboxID)
+	dispatcher.logger.Info(kind+"_task_enqueued", "item_id", id)
 	return nil
 }

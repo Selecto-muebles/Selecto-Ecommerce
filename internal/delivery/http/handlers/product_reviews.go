@@ -133,7 +133,7 @@ func SubmitProductReviewHandler(db *database.DB) gin.HandlerFunc {
 		err = tx.QueryRow(c, `INSERT INTO product_reviews(product_id,user_id,order_id,rating,title,comment)
 			VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,product_id) DO UPDATE SET
 			order_id=EXCLUDED.order_id,rating=EXCLUDED.rating,title=EXCLUDED.title,comment=EXCLUDED.comment,
-			status='pending',moderated_by=NULL,moderated_at=NULL,updated_at=NOW() RETURNING id`, productID, userID, orderID, input.Rating, input.Title, input.Comment).Scan(&reviewID)
+			status='pending',moderated_by=NULL,moderated_at=NULL,moderation_note='',updated_at=NOW() RETURNING id`, productID, userID, orderID, input.Rating, input.Title, input.Comment).Scan(&reviewID)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -151,78 +151,9 @@ func SubmitProductReviewHandler(db *database.DB) gin.HandlerFunc {
 }
 
 func AdminListProductReviewsHandler(db *database.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		page := adminPagination(c)
-		status := strings.TrimSpace(c.Query("status"))
-		if status != "" && status != "pending" && status != "published" && status != "rejected" {
-			apperrors.BadRequest(c, "invalid review status")
-			return
-		}
-		var total int
-		if err := db.Pool.QueryRow(c, `SELECT COUNT(*) FROM product_reviews WHERE ($1='' OR status=$1)`, status).Scan(&total); err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		rows, err := db.Pool.Query(c, `SELECT r.id,r.rating,r.title,r.comment,r.status,r.created_at,r.updated_at,
-			p.id,p.name,u.email,o.id FROM product_reviews r JOIN products p ON p.id=r.product_id
-			JOIN users u ON u.id=r.user_id JOIN orders o ON o.id=r.order_id
-			WHERE ($1='' OR r.status=$1) ORDER BY r.created_at DESC,r.id DESC LIMIT $2 OFFSET $3`, status, page.PageSize, page.Offset)
-		if err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		defer rows.Close()
-		items := []gin.H{}
-		for rows.Next() {
-			var id, rating, productID, orderID int
-			var title, comment, itemStatus, productName, email string
-			var createdAt, updatedAt time.Time
-			if err := rows.Scan(&id, &rating, &title, &comment, &itemStatus, &createdAt, &updatedAt, &productID, &productName, &email, &orderID); err != nil {
-				apperrors.Internal(c)
-				return
-			}
-			items = append(items, gin.H{"id": utils.EncodeID(id), "rating": rating, "title": title, "comment": comment, "status": itemStatus, "verified_purchase": true, "created_at": createdAt, "updated_at": updatedAt, "product": gin.H{"id": utils.EncodeID(productID), "name": productName}, "customer_email": email, "order_id": utils.EncodeID(orderID)})
-		}
-		c.JSON(http.StatusOK, gin.H{"items": items, "page": page.Page, "page_size": page.PageSize, "total": total})
-	}
+	return AdminOperationsListProductReviewsHandler(db)
 }
 
 func AdminModerateProductReviewHandler(db *database.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		reviewID, ok := adminIDParam(c, "id")
-		if !ok {
-			return
-		}
-		var input struct {
-			Status string `json:"status"`
-		}
-		if err := c.ShouldBindJSON(&input); err != nil || (input.Status != "published" && input.Status != "rejected") {
-			apperrors.BadRequest(c, "status must be published or rejected")
-			return
-		}
-		tx, err := db.Pool.Begin(c)
-		if err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		defer tx.Rollback(c)
-		tag, err := tx.Exec(c, `UPDATE product_reviews SET status=$1,moderated_by=$2,moderated_at=NOW(),updated_at=NOW() WHERE id=$3`, input.Status, adminActor(c), reviewID)
-		if err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		if tag.RowsAffected() == 0 {
-			apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "review not found", nil)
-			return
-		}
-		if err := writeAuditTx(c, tx, adminActor(c), "product_review_"+input.Status, "product_review", reviewID, gin.H{"status": input.Status}); err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		if err := tx.Commit(c); err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"id": utils.EncodeID(reviewID), "status": input.Status})
-	}
+	return AdminOperationsModerateProductReviewHandler(db)
 }
