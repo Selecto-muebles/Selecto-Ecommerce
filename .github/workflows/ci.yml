@@ -39,6 +39,8 @@ jobs:
       - run: go mod verify
       - name: Validar configuración segura de monitoreo
         run: node --test scripts/gcp/monitoring.test.mjs scripts/certification/safety.test.mjs
+      - name: Validar contrato versionado del Gateway
+        run: node scripts/check_gateway_contract.mjs
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - name: Apply migrations twice
         run: |
