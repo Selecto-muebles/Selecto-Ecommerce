@@ -51,6 +51,8 @@ func SetupRouter(
 	})
 
 	r.POST("/register", handlers.RegisterHandler(db, cfg, logger, notifiers...))
+	r.GET("/seo/head", handlers.SEOHeadHandler(db, cfg))
+	r.GET("/sitemap.xml", handlers.SitemapHandler(db, cfg))
 	r.POST("/login", handlers.LoginHandler(db, cfg, logger))
 	r.POST("/auth/email/verify", handlers.VerifyEmailHandler(db))
 	r.POST("/auth/email/resend", handlers.ResendVerificationHandler(db, cfg, notifiers...))

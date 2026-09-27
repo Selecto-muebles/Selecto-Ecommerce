@@ -14,6 +14,14 @@
     "protocol": "h2"
   },
   "paths": {
+    "/seo/head": {
+      "get": {"operationId":"PublicSEOHead","produces":["text/html"],"parameters":[{"name":"path","in":"query","type":"string"}],"responses":{"200":{"description":"Escaped public metadata fragment"}}},
+      "options":{"operationId":"CorsPublicSEOHead","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/sitemap.xml": {
+      "get":{"operationId":"PublicSitemap","produces":["application/xml"],"responses":{"200":{"description":"Dynamic commercial sitemap"}}},
+      "options":{"operationId":"CorsPublicSitemap","responses":{"204":{"description":"Preflight"}}}
+    },
     "/admin/categories/{id}": {
       "patch": {
         "operationId": "AdminUpdateCategory",

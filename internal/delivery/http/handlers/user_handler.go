@@ -61,7 +61,7 @@ func RegisterHandler(
 			apperrors.BadRequest(c, "email and password must be valid")
 			return
 		}
-		if err := customerProfile.Validate(); err != nil {
+		if err := customerProfile.ValidateForRegistration(); err != nil {
 			logger.Warn(logging.EventUserRegistrationRejected, "reason", "invalid_customer_profile")
 			apperrors.BadRequest(c, "customer billing and shipping information must be valid")
 			return

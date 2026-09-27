@@ -118,7 +118,13 @@ func GoogleRegisterHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			PostalCode: input.PostalCode, Province: input.Province, Locality: input.Locality,
 			PhoneNumber: input.PhoneNumber,
 		})
-		if err := profile.Validate(); err != nil {
+		if profile.FirstName == "" {
+			profile.FirstName = claims.FirstName
+		}
+		if profile.LastName == "" {
+			profile.LastName = claims.LastName
+		}
+		if err := profile.ValidateForRegistration(); err != nil {
 			apperrors.BadRequest(c, "customer billing and shipping information must be valid")
 			return
 		}
