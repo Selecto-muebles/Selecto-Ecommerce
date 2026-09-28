@@ -1,5 +1,9 @@
 # Cierre comercial y certificación — Selecto
 
+> Informe histórico del laboratorio del 26/09/2026. Su estado de pendientes fue
+> actualizado después de la promoción y de las pruebas productivas en
+> [CERTIFICACION_TECNICA_CIERRE_2026-09-28.md](CERTIFICACION_TECNICA_CIERRE_2026-09-28.md).
+
 Este informe corresponde a las ramas de **Selecto-muebles**, antes de su merge y
 despliegue. No equivale a certificar estos cambios en producción ni a autorizar
 su publicación sin revisión. La base e infraestructura productivas no fueron
