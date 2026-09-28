@@ -25,6 +25,9 @@ test('bounded HTTPS GET checks, exact domains, no auth or writes',()=>{
     assert.equal(c.httpCheck.acceptedResponseStatusCodes[0].statusValue,200);
     assert.equal(c.monitoredResource.labels.project_id,PROJECT);
   }
+  assert.deepEqual(configs[0].contentMatchers,[]);
+  assert.equal(configs[1].contentMatchers[0].content,'<title>Selecto Admin | Panel de Control</title>');
+  assert.equal(configs[2].contentMatchers[0].content,'"status":"ready"');
 });
 test('all seven policies notify the specified channel and scope existing services',()=>{
   const policies=alertPolicies(uptimeConfigs().map((c,i)=>({...c,name:`checks/${i}`})),'channels/approved');
@@ -77,6 +80,7 @@ test('server metadata does not trigger drift; meaningful change does',()=>{
   assert.ok(containsDesired({name:'id',enabled:true},{enabled:true}));
   assert.ok(!containsDesired({period:'60s'},{period:'300s'}));
   assert.ok(containsDesired({comparison:'COMPARISON_GT'},{comparison:'COMPARISON_GT',thresholdValue:0}));
+  assert.ok(containsDesired(undefined,[]));
   assert.ok(!containsDesired({},{enabled:true}));
 });
 test('job absence aligns DELTA metrics and also detects samples with zero successes',()=>{

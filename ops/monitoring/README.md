@@ -10,12 +10,15 @@ Tres chequeos públicos HTTPS GET, cada 5 minutos desde Iowa, Bélgica y São Pa
 
 | Dominio / ruta | Qué valida |
 |---|---|
-| `https://selectosport.com/` | HTTP 200, TLS y título de Selecto |
+| `https://selectosport.com/` | HTTP 200 y TLS; SEO se valida por rutas específicas |
 | `https://admin.selectosport.com/login` | HTTP 200, TLS y título de Admin |
 | `https://api.selectosport.com/ready` | HTTP 200 y readiness, incluida conexión SQL |
 
 No usan credenciales, no crean pedidos/correos ni prueban JavaScript o sesiones.
-Si cambia el título HTML legítimamente, actualizar el matcher junto al cambio.
+El Storefront no usa matcher de título: el shell y la respuesta del renderizador
+de metadata pueden tener tamaños distintos y provocaron falsos negativos aun con
+HTTP 200. Admin conserva su título como matcher y API conserva `"status":"ready"`.
+El sitemap y la metadata pública se comprueban por separado durante cada cierre.
 
 Siete políticas, todas dirigidas al canal email explícitamente elegido:
 

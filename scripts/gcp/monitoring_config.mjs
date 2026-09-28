@@ -9,14 +9,17 @@ const jobFilter = `${project} AND resource.type="cloud_run_job" AND metric.type=
 
 export function uptimeConfigs() {
   return [
-    ['storefront', 'selectosport.com', '/', '<title>Equipamiento Deportivo | Selecto</title>'],
+    // The public HTML can legitimately vary between the load balancer,
+    // metadata renderer and static shell. Availability is HTTP/TLS here; SEO
+    // content is certified separately through /seo/head and /sitemap.xml.
+    ['storefront', 'selectosport.com', '/', null],
     ['admin', 'admin.selectosport.com', '/login', '<title>Selecto Admin | Panel de Control</title>'],
     ['api', 'api.selectosport.com', '/ready', '"status":"ready"'],
   ].map(([key, host, path, content]) => ({
     displayName: `Selecto - disponibilidad ${key}`, userLabels: labels(key),
     monitoredResource: { type: 'uptime_url', labels: { project_id: PROJECT, host } },
     httpCheck: { requestMethod: 'GET', useSsl: true, validateSsl: true, port: 443, path, acceptedResponseStatusCodes: [{ statusValue: 200 }] },
-    contentMatchers: [{ content, matcher: 'CONTAINS_STRING' }],
+    contentMatchers: content ? [{ content, matcher: 'CONTAINS_STRING' }] : [],
     period: '300s', timeout: '15s', selectedRegions: ['USA_IOWA', 'EUROPE', 'SOUTH_AMERICA'],
     checkerType: 'STATIC_IP_CHECKERS', logCheckFailures: true,
   }));

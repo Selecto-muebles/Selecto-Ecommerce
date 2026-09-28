@@ -12,7 +12,8 @@ export function safeTarget(resources, desired) {
 }
 // Responses add server defaults and condition IDs. Compare only desired fields.
 export function containsDesired(actual, desired) {
-  if (Array.isArray(desired)) return Array.isArray(actual) && actual.length === desired.length && desired.every((x,i) => containsDesired(actual[i],x));
+  if (Array.isArray(desired)) return (actual === undefined && desired.length === 0) ||
+    (Array.isArray(actual) && actual.length === desired.length && desired.every((x,i) => containsDesired(actual[i],x)));
   if (desired && typeof desired === 'object') return !!actual && Object.entries(desired).every(([k,v]) =>
     // Protobuf omits a zero threshold in successful API responses.
     (k==='thresholdValue' && v===0 && actual[k]===undefined) || containsDesired(actual[k],v));
