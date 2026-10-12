@@ -51,6 +51,8 @@ func SetupRouter(
 	})
 
 	r.POST("/register", handlers.RegisterHandler(db, cfg, logger, notifiers...))
+	r.GET("/legal/terms", handlers.PublicTermsHandler(db))
+	r.POST("/consumer/withdrawals", handlers.PublicWithdrawalHandler(db, cfg, notifiers...))
 	r.GET("/seo/head", handlers.SEOHeadHandler(db, cfg))
 	r.GET("/sitemap.xml", handlers.SitemapHandler(db, cfg))
 	r.POST("/login", handlers.LoginHandler(db, cfg, logger))
@@ -101,6 +103,9 @@ func SetupRouter(
 	admin.Use(middleware.RequireAdmin(db, logger))
 
 	admin.GET("/admin/me", handlers.GetAdminMeHandler(db))
+	admin.GET("/admin/legal/terms", handlers.AdminLegalTermsHandler(db))
+	admin.GET("/admin/consumer-requests", handlers.AdminWithdrawalListHandler(db))
+	admin.PATCH("/admin/consumer-requests/:id", handlers.AdminWithdrawalUpdateHandler(db, notifiers...))
 	admin.GET("/admin/dashboard", handlers.GetAdminDashboardHandler(db, logger))
 	admin.GET("/admin/categories", handlers.ListCategoriesHandler(db, false))
 	admin.POST("/admin/categories", handlers.CreateCategoryHandler(db))

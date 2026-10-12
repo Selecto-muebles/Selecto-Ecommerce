@@ -17,7 +17,7 @@ se conservan. Este bloque no agrega migraciones ni requiere otra base productiva
 
 ## Laboratorio reproducible
 
-Requisitos: Docker, PostgreSQL 17 (imagen `postgres:17-alpine`), Go 1.25.13,
+Requisitos: Docker, PostgreSQL 17 (imagen `postgres:17-alpine`), Go 1.26.9,
 Node 22.23.1, dependencias `npm ci` de Admin y Storefront, Chromium de Playwright.
 No necesita una conexión a Cloud SQL ni credenciales de Google, SMTP o Brevo.
 

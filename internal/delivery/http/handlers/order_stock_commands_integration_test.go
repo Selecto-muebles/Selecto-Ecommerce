@@ -180,7 +180,7 @@ func TestCreateOrderIdempotencyKeyReservesStockOnce(t *testing.T) {
 	})
 
 	handler := CreateOrderHandler(&database.DB{Pool: pool}, &config.Config{OrderPendingTTL: 15 * time.Minute, StorefrontURL: "http://localhost:5173"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	body := fmt.Sprintf(`{"items":[{"product_id":%q,"quantity":2}]}`, utils.EncodeID(productID))
+	body := fmt.Sprintf(`{"terms_version":"1.0","items":[{"product_id":%q,"quantity":2}]}`, utils.EncodeID(productID))
 	perform := func() *httptest.ResponseRecorder {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
@@ -212,6 +212,15 @@ func TestCreateOrderIdempotencyKeyReservesStockOnce(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM audit_logs WHERE entity_type='order' AND entity_id=$1 AND action='order_created'", orderID).Scan(&audits); err != nil {
 		t.Fatalf("count creation audits: %v", err)
+	}
+	var acceptedVersion string
+	var acceptedAt time.Time
+	if err := pool.QueryRow(ctx, "SELECT terms_version,terms_accepted_at FROM orders WHERE id=$1", orderID).Scan(&acceptedVersion, &acceptedAt); err != nil || acceptedVersion != "1.0" || acceptedAt.IsZero() {
+		t.Fatalf("legal acceptance on order = %q at %v, err=%v", acceptedVersion, acceptedAt, err)
+	}
+	var legalAcceptances int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM legal_acceptances WHERE order_id=$1 AND user_id=$2", orderID, userID).Scan(&legalAcceptances); err != nil || legalAcceptances != 1 {
+		t.Fatalf("legal acceptance records=%d err=%v", legalAcceptances, err)
 	}
 	if stock != 3 || orders != 1 || audits != 1 {
 		t.Fatalf("stock/orders/audits = %d/%d/%d, want 3/1/1", stock, orders, audits)

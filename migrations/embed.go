@@ -4,5 +4,5 @@ import "embed"
 
 // Files contains the immutable SQL migration sources shipped with the binary.
 //
-//go:embed *.sql
+//go:embed *.sql *.md
 var Files embed.FS

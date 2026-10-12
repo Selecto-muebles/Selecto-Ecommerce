@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"Selecto-Ecommerce/internal/config"
@@ -24,7 +25,7 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 	creator := orderservice.NewCreator(postgresrepo.NewOrderRepository(db, cfg), logger)
 	return func(c *gin.Context) {
 		var input CreateOrderInput
-		if err := c.ShouldBindJSON(&input); err != nil {
+		if err := c.ShouldBindJSON(&input); err != nil || strings.TrimSpace(input.TermsVersion) == "" {
 			apperrors.BadRequest(c, "invalid input")
 			return
 		}
@@ -35,6 +36,7 @@ func CreateOrderHandler(db *database.DB, cfg *config.Config, logger *slog.Logger
 		}
 		result, err := creator.Create(c, orderservice.CreateInput{
 			Email: fmt.Sprint(c.MustGet("email")), IdempotencyKey: c.GetHeader("Idempotency-Key"), RawRequest: rawRequest,
+			TermsVersion: input.TermsVersion,
 			Items: collection.Map(input.Items, func(item OrderItemInput) orderservice.Item {
 				return orderservice.Item{ProductID: item.ProductID.Int(), Quantity: item.Quantity, SelectedOptions: item.SelectedOptions}
 			}),
@@ -82,6 +84,8 @@ func handleCreateOrderError(c *gin.Context, err error) {
 	case errors.Is(err, orderservice.ErrUserNotFound):
 		apperrors.JSON(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, err.Error(), nil)
 	case errors.Is(err, orderservice.ErrIdempotencyConflict):
+		apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, err.Error(), nil)
+	case errors.Is(err, orderservice.ErrInvalidTermsVersion):
 		apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, err.Error(), nil)
 	case errors.As(err, &invalidProduct):
 		apperrors.JSON(c, http.StatusBadRequest, apperrors.CodeInvalidInput, err.Error(), gin.H{"product_id": utils.EncodeID(invalidProduct.ProductID)})

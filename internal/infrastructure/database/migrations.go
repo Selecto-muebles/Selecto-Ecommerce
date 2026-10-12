@@ -47,6 +47,9 @@ func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool) (MigrationResult, 
 			result.Skipped++
 		}
 	}
+	if err := seedSelectoTerms(ctx, pool); err != nil {
+		return result, err
+	}
 	return result, nil
 }
 
