@@ -42,3 +42,32 @@ func TestLegalVersionIncrements(t *testing.T) {
 		t.Fatal("legal version was not incremented")
 	}
 }
+
+func TestRemoveLegalArticleRenumbersWithoutTouchingOtherText(t *testing.T) {
+	body, err := migrationfiles.Files.ReadFile("selecto-terms-v1.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sections := splitLegalSections(string(body))
+	index := -1
+	for i, section := range sections {
+		if strings.HasPrefix(section.Heading, "### Artículo 7.") {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatal("article 7 not found")
+	}
+	remaining := removeAndRenumberLegalArticle(sections, index)
+	updated := composeLegalSections(remaining)
+	if len(remaining) != len(sections)-1 || strings.Contains(updated, "### Artículo 7. Medios de pago") || !strings.Contains(updated, "### Artículo 7. Facturación") || !strings.Contains(updated, "### Artículo 45. Contacto oficial") {
+		t.Fatal("article removal did not preserve and renumber the remaining text")
+	}
+	if !strings.Contains(updated, "# CAPÍTULO I — TÉRMINOS Y CONDICIONES GENERALES") {
+		t.Fatal("chapter heading was removed")
+	}
+	if !strings.Contains(composeLegalSections(sections), "### Artículo 7. Medios de pago") {
+		t.Fatal("original version was mutated")
+	}
+}

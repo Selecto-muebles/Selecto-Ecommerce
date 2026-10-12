@@ -90,6 +90,7 @@ type legalArticleUpdate struct {
 	BaseSHA256 string `json:"base_sha256"`
 	Revision   int64  `json:"revision"`
 	Body       string `json:"body"`
+	Remove     bool   `json:"remove"`
 }
 
 func AdminLegalArticleSaveHandler(db *database.DB) gin.HandlerFunc {
@@ -101,7 +102,11 @@ func AdminLegalArticleSaveHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		body := strings.TrimSpace(input.Body)
-		if body == "" || len(body) > 16000 || legalHeadingPattern.MatchString(body) {
+		if input.Remove && body != "" {
+			apperrors.BadRequest(c, "removed article cannot also contain a body")
+			return
+		}
+		if !input.Remove && (body == "" || len(body) > 16000 || legalHeadingPattern.MatchString(body)) {
 			apperrors.BadRequest(c, "article body must be nonempty and cannot contain headings")
 			return
 		}
@@ -133,7 +138,24 @@ func AdminLegalArticleSaveHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.BadRequest(c, "only numbered articles can be edited")
 			return
 		}
-		response.Sections[index].Body = "\n\n" + body + "\n\n"
+		heading := response.Sections[index].Heading
+		auditAction := "legal_article_draft_saved"
+		if input.Remove {
+			count := 0
+			for _, section := range response.Sections {
+				if section.Editable {
+					count++
+				}
+			}
+			if count <= 1 {
+				apperrors.BadRequest(c, "at least one article must remain")
+				return
+			}
+			response.Sections = removeAndRenumberLegalArticle(response.Sections, index)
+			auditAction = "legal_article_draft_removed"
+		} else {
+			response.Sections[index].Body = "\n\n" + body + "\n\n"
+		}
 		data, err := json.Marshal(response.Sections)
 		if err != nil {
 			apperrors.Internal(c)
@@ -148,7 +170,7 @@ func AdminLegalArticleSaveHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		if err := writeAuditTx(c, tx, adminActor(c), "legal_article_draft_saved", "legal_document", int(base.ID), gin.H{"article": response.Sections[index].Heading, "revision": response.Revision}); err != nil {
+		if err := writeAuditTx(c, tx, adminActor(c), auditAction, "legal_document", int(base.ID), gin.H{"article": heading, "revision": response.Revision}); err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -170,7 +192,7 @@ type legalPublishInput struct {
 func AdminLegalPublishHandler(db *database.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input legalPublishInput
-		if c.ShouldBindJSON(&input) != nil || input.BaseSHA256 == "" || input.Revision < 1 {
+		if c.ShouldBindJSON(&input) != nil || input.BaseSHA256 == "" || input.Revision < 0 {
 			apperrors.BadRequest(c, "invalid publication request")
 			return
 		}
@@ -194,7 +216,7 @@ func AdminLegalPublishHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		if !response.Dirty || input.BaseSHA256 != base.SHA256 || input.Revision != response.Revision {
+		if input.BaseSHA256 != base.SHA256 || input.Revision != response.Revision {
 			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "legal draft changed; reload before publishing", nil)
 			return
 		}
