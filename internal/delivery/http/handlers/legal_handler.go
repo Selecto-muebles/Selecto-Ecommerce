@@ -44,7 +44,7 @@ func PublicTermsHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		c.Header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600")
+		c.Header("Cache-Control", "no-cache")
 		c.JSON(http.StatusOK, document)
 	}
 }

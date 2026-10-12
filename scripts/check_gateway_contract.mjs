@@ -4,9 +4,17 @@ const spec = JSON.parse(
   readFileSync(new URL("../ops/api-gateway/openapi.json", import.meta.url), "utf8"),
 );
 
-const expectedPathCount = 69;
+const expectedPathCount = 77;
 const requiredMethods = new Map([
   ["/health", "get"],
+  ["/legal/terms", "get"],
+  ["/consumer/withdrawals", "post"],
+  ["/admin/legal/terms", "get"],
+  ["/admin/legal/terms/editor", "get"],
+  ["/admin/legal/terms/draft/{index}", "patch"],
+  ["/admin/legal/terms/publish", "post"],
+  ["/admin/consumer-requests", "get"],
+  ["/admin/consumer-requests/{id}", "patch"],
   ["/seo/head", "get"],
   ["/sitemap.xml", "get"],
   ["/admin/categories/{id}", "patch"],

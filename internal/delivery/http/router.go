@@ -104,6 +104,9 @@ func SetupRouter(
 
 	admin.GET("/admin/me", handlers.GetAdminMeHandler(db))
 	admin.GET("/admin/legal/terms", handlers.AdminLegalTermsHandler(db))
+	admin.GET("/admin/legal/terms/editor", handlers.AdminLegalEditorHandler(db))
+	admin.PATCH("/admin/legal/terms/draft/:index", handlers.AdminLegalArticleSaveHandler(db))
+	admin.POST("/admin/legal/terms/publish", handlers.AdminLegalPublishHandler(db))
 	admin.GET("/admin/consumer-requests", handlers.AdminWithdrawalListHandler(db))
 	admin.PATCH("/admin/consumer-requests/:id", handlers.AdminWithdrawalUpdateHandler(db, notifiers...))
 	admin.GET("/admin/dashboard", handlers.GetAdminDashboardHandler(db, logger))
