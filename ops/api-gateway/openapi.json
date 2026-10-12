@@ -14,6 +14,38 @@
     "protocol": "h2"
   },
   "paths": {
+    "/legal/terms": {
+      "get": {"operationId":"PublicLegalTerms","responses":{"200":{"description":"Published legal terms"}}},
+      "options": {"operationId":"CorsPublicLegalTerms","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/consumer/withdrawals": {
+      "post": {"operationId":"PublicConsumerWithdrawal","responses":{"202":{"description":"Withdrawal request received"}}},
+      "options": {"operationId":"CorsPublicConsumerWithdrawal","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/legal/terms": {
+      "get": {"operationId":"AdminLegalTerms","responses":{"200":{"description":"Published legal terms"}}},
+      "options": {"operationId":"CorsAdminLegalTerms","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/legal/terms/editor": {
+      "get": {"operationId":"AdminLegalEditor","responses":{"200":{"description":"Legal article editor state"}}},
+      "options": {"operationId":"CorsAdminLegalEditor","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/legal/terms/draft/{index}": {
+      "patch": {"operationId":"AdminLegalArticleSave","parameters":[{"name":"index","in":"path","required":true,"type":"integer"}],"responses":{"200":{"description":"Saved article draft"}}},
+      "options": {"operationId":"CorsAdminLegalArticleSave","parameters":[{"name":"index","in":"path","required":true,"type":"integer"}],"responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/legal/terms/publish": {
+      "post": {"operationId":"AdminLegalPublish","responses":{"200":{"description":"Published new legal terms version"}}},
+      "options": {"operationId":"CorsAdminLegalPublish","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/consumer-requests": {
+      "get": {"operationId":"AdminConsumerRequests","responses":{"200":{"description":"Withdrawal requests"}}},
+      "options": {"operationId":"CorsAdminConsumerRequests","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/consumer-requests/{id}": {
+      "patch": {"operationId":"AdminConsumerRequestUpdate","parameters":[{"name":"id","in":"path","required":true,"type":"integer"}],"responses":{"200":{"description":"Updated withdrawal request"}}},
+      "options": {"operationId":"CorsAdminConsumerRequestUpdate","parameters":[{"name":"id","in":"path","required":true,"type":"integer"}],"responses":{"204":{"description":"Preflight"}}}
+    },
     "/seo/head": {
       "get": {"operationId":"PublicSEOHead","produces":["text/html"],"parameters":[{"name":"path","in":"query","type":"string"}],"responses":{"200":{"description":"Escaped public metadata fragment"}}},
       "options":{"operationId":"CorsPublicSEOHead","responses":{"204":{"description":"Preflight"}}}

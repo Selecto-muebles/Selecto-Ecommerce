@@ -1,7 +1,8 @@
 # API Gateway de Ecommerce durante el corte a Selecto
 
-`openapi.json` contiene las 69 rutas vigentes de Ecommerce, incluidas categorías,
-contenido editorial, reseñas y recuperación de acceso administrativo. Mantiene
+`openapi.json` contiene las 77 rutas vigentes de Ecommerce, incluidas categorías,
+contenido editorial, reseñas, recuperación de acceso administrativo, términos
+públicos, arrepentimiento y edición versionada de artículos legales. Mantiene
 los contratos existentes, incluidos `GET`/`OPTIONS
 /admin/payments/records/{record_id}` y `DELETE /admin/products/{id}`. El backend
 continúa siendo el Cloud Run privado
@@ -9,7 +10,9 @@ continúa siendo el Cloud Run privado
 balanceador.
 
 La activación queda deliberadamente fuera de GitHub Actions. Requiere un operador
-autenticado, comparación de rutas y una ventana de smoke controlada.
+autenticado, comparación de rutas y una ventana de smoke controlada. Desplegar
+solo Ecommerce no activa rutas nuevas: API Gateway las rechaza con 404 antes de
+que la petición llegue a Cloud Run.
 
 ## Recursos fijos
 
@@ -39,10 +42,12 @@ gcloud api-gateway gateways update destry-ecommerce-staging-gw \
 ```
 
 Antes de actualizar se debe capturar el ID activo para rollback y comprobar que
-la configuración compilada conserva las 69 rutas esperadas. Después se prueban
+la configuración compilada conserva las 77 rutas esperadas. Después se prueban
 `/health`, catálogo, autenticación, CORS, recuperación administrativa,
 eliminación protegida de productos, newsletter, comunicaciones y detalle
-multiproveedor del Backoffice.
+multiproveedor del Backoffice. También se comprueba que
+`GET https://api.selectosport.com/legal/terms` responde 200 con versión y
+`body_markdown`, y que el panel admin puede cargar el documento y la bandeja.
 
 ## Rollback
 
