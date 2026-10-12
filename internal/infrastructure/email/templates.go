@@ -38,6 +38,12 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 		return "Actualización de entrega de la orden " + value("order_id"), wrapper(content), nil
 	case "newsletter_unsubscribe":
 		return "Confirmá la baja de novedades Selecto", wrapper(`<h2>Confirmá tu baja</h2><p>Recibimos una solicitud para dejar de recibir novedades comerciales. El enlace vence en 30 minutos.</p>` + button("Confirmar baja", value("url"))), nil
+	case "withdrawal_ack":
+		content := `<h2>Recibimos tu solicitud</h2><p>Tu solicitud de arrepentimiento quedó registrada con el código <strong>` + value("public_code") + `</strong>.</p><p>Conservá este código como constancia. No necesitás crear una cuenta ni realizar otro trámite para dejar registrada la solicitud.</p><p>Referencia de orden: ` + value("order_reference") + `</p>`
+		return "Constancia de solicitud de arrepentimiento Selecto", wrapper(content + button("Consultar información", value("url"))), nil
+	case "withdrawal_update":
+		content := `<h2>Actualización de tu solicitud</h2><p>La gestión de tu solicitud <strong>` + value("public_code") + `</strong> figura ` + value("status_label") + `.</p><p>Conservá el código como referencia para cualquier consulta.</p>`
+		return "Actualización de solicitud de arrepentimiento Selecto", wrapper(content), nil
 	default:
 		return "", "", fmt.Errorf("unknown email template %q", template)
 	}

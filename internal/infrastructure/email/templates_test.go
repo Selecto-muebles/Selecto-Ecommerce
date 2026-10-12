@@ -25,3 +25,20 @@ func TestOrderCreatedIsClearlyAnInformationalReceipt(t *testing.T) {
 		t.Fatal("order email must not be presented as a fiscal invoice")
 	}
 }
+
+func TestWithdrawalEmailsProvideReceiptAndEscapeCustomerData(t *testing.T) {
+	_, acknowledgment, err := Render("withdrawal_ack", json.RawMessage(`{"public_code":"SEL-123","order_reference":"<img>","url":"https://shop.example/boton-de-arrepentimiento"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(acknowledgment, "SEL-123") || strings.Contains(acknowledgment, "<img>") || !strings.Contains(acknowledgment, "&lt;img&gt;") {
+		t.Fatal("withdrawal acknowledgment must include its code and escape user-provided order data")
+	}
+	_, update, err := Render("withdrawal_update", json.RawMessage(`{"public_code":"SEL-123","status_label":"en revisión"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(update, "SEL-123") || !strings.Contains(update, "en revisión") {
+		t.Fatal("withdrawal status email must identify the request and its current state")
+	}
+}

@@ -17,9 +17,9 @@ import (
 
 func insertOrder(ctx context.Context, tx pgx.Tx, cfg *config.Config, userID int, command orderservice.CreateCommand, total money.Cents) (int, error) {
 	var orderID int
-	err := tx.QueryRow(ctx, `INSERT INTO orders (user_id, status, total, expires_at, idempotency_key, request_hash)
-		VALUES ($1, $2, $3, NOW() + make_interval(secs => $4), NULLIF($5, ''), NULLIF($6, '')) RETURNING id`,
-		userID, domain.OrderStatusPending, total.DecimalString(), int(cfg.OrderPendingTTL.Seconds()), command.IdempotencyKey, command.RequestHash,
+	err := tx.QueryRow(ctx, `INSERT INTO orders (user_id, status, total, expires_at, idempotency_key, request_hash, terms_version, terms_accepted_at)
+		VALUES ($1, $2, $3, NOW() + make_interval(secs => $4), NULLIF($5, ''), NULLIF($6, ''), $7, NOW()) RETURNING id`,
+		userID, domain.OrderStatusPending, total.DecimalString(), int(cfg.OrderPendingTTL.Seconds()), command.IdempotencyKey, command.RequestHash, command.TermsVersion,
 	).Scan(&orderID)
 	return orderID, err
 }

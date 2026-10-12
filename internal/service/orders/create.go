@@ -44,6 +44,7 @@ var (
 	ErrInvalidIdempotencyKey = errors.New("Idempotency-Key must contain between 8 and 128 characters")
 	ErrUserNotFound          = errors.New("user not found")
 	ErrIdempotencyConflict   = errors.New("Idempotency-Key was already used with a different order")
+	ErrInvalidTermsVersion   = errors.New("published legal terms must be accepted before checkout")
 )
 
 type ShippingInput struct {
@@ -53,6 +54,7 @@ type ShippingInput struct {
 
 type CreateInput struct {
 	Email          string
+	TermsVersion   string
 	IdempotencyKey string
 	RawRequest     []byte
 	Items          []Item
@@ -62,6 +64,7 @@ type CreateInput struct {
 
 type CreateCommand struct {
 	Email                 string
+	TermsVersion          string
 	IdempotencyKey        string
 	RequestHash           string
 	PreparedItems         PreparedItems
@@ -120,7 +123,7 @@ func (service *Creator) Create(ctx context.Context, input CreateInput) (CreateRe
 	}
 	digest := sha256.Sum256(input.RawRequest)
 	result, err := service.repository.Create(ctx, CreateCommand{
-		Email: input.Email, IdempotencyKey: key, RequestHash: hex.EncodeToString(digest[:]),
+		Email: input.Email, TermsVersion: strings.TrimSpace(input.TermsVersion), IdempotencyKey: key, RequestHash: hex.EncodeToString(digest[:]),
 		PreparedItems: prepared, ShippingProfile: shipping, ShippingProvided: input.Shipping != nil, RequestedDeliveryDate: requestedDate,
 	})
 	if err != nil {

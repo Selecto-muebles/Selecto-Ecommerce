@@ -16,6 +16,7 @@ type OrderItemInput struct {
 type CreateOrderInput struct {
 	Items           []OrderItemInput          `json:"items" binding:"required"`
 	ShippingAddress *CreateOrderShippingInput `json:"shipping_address,omitempty"`
+	TermsVersion    string                    `json:"terms_version" binding:"required"`
 }
 
 type CreateOrderShippingInput struct {

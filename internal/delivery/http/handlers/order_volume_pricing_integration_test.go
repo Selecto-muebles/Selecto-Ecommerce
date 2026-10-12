@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +131,7 @@ func seedVolumePricingUser(t *testing.T, pool *pgxpool.Pool, email string) int {
 
 func createVolumePricingOrder(t *testing.T, pool *pgxpool.Pool, email, body string, expectedStatus int) int {
 	t.Helper()
+	body = strings.Replace(body, `{"items":`, `{"terms_version":"1.0","items":`, 1)
 	handler := CreateOrderHandler(&database.DB{Pool: pool}, &config.Config{OrderPendingTTL: 15 * time.Minute, StorefrontURL: "http://localhost:5173"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

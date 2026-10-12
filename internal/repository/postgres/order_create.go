@@ -58,6 +58,13 @@ func (repository *OrderRepository) Create(ctx context.Context, command orderserv
 	}
 
 	shippingProfile := command.ShippingProfile
+	var legalDocumentID int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM legal_documents WHERE slug='terms' AND version=$1 AND published`, command.TermsVersion).Scan(&legalDocumentID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return orderservice.CreateResult{}, orderservice.ErrInvalidTermsVersion
+		}
+		return orderservice.CreateResult{}, err
+	}
 	if !command.ShippingProvided {
 		shippingProfile = validation.NormalizeCustomerProfile(accountProfile)
 	}
@@ -75,6 +82,9 @@ func (repository *OrderRepository) Create(ctx context.Context, command orderserv
 	}
 	orderID, err := insertOrder(ctx, tx, repository.cfg, userID, command, total)
 	if err != nil {
+		return orderservice.CreateResult{}, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO legal_acceptances(user_id,order_id,document_id,accepted_at,source) VALUES($1,$2,$3,NOW(),'checkout')`, userID, orderID, legalDocumentID); err != nil {
 		return orderservice.CreateResult{}, err
 	}
 	if err := insertShippingAddress(ctx, tx, orderID, shippingProfile, command); err != nil {

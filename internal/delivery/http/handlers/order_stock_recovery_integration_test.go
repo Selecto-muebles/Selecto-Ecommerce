@@ -221,6 +221,7 @@ func cleanupOrderFixture(ctx context.Context, pool *pgxpool.Pool, orderID, produ
 	_, _ = pool.Exec(ctx, "DELETE FROM email_outbox WHERE event_key=$1", fmt.Sprintf("order-created:%d", orderID))
 	_, _ = pool.Exec(ctx, "DELETE FROM audit_logs WHERE entity_type='order' AND entity_id=$1", orderID)
 	_, _ = pool.Exec(ctx, "DELETE FROM payment_webhook_events WHERE order_id=$1", orderID)
+	_, _ = pool.Exec(ctx, "DELETE FROM legal_acceptances WHERE order_id=$1", orderID)
 	_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", orderID)
 	_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
 	_, _ = pool.Exec(ctx, "DELETE FROM users WHERE id=$1", userID)

@@ -49,7 +49,7 @@ func TestCreateOrderUsesPerOrderShippingSnapshot(t *testing.T) {
 	t.Cleanup(func() { cleanupOrderFixture(ctx, pool, orderID, productID, userID) })
 
 	requestedDate := time.Now().UTC().AddDate(0, 0, 7).Format("2006-01-02")
-	body := fmt.Sprintf(`{"items":[{"product_id":%q,"quantity":1}],"shipping_address":{"first_name":"Otra","last_name":"Persona","dni":"87654321","street_address":"Destino real","street_number":"456","postal_code":"2000","province":"Santa Fe","locality":"Rosario","phone_number":"3412345678","requested_delivery_date":%q}}`, utils.EncodeID(productID), requestedDate)
+	body := fmt.Sprintf(`{"terms_version":"1.0","items":[{"product_id":%q,"quantity":1}],"shipping_address":{"first_name":"Otra","last_name":"Persona","dni":"87654321","street_address":"Destino real","street_number":"456","postal_code":"2000","province":"Santa Fe","locality":"Rosario","phone_number":"3412345678","requested_delivery_date":%q}}`, utils.EncodeID(productID), requestedDate)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/orders", bytes.NewBufferString(body))
