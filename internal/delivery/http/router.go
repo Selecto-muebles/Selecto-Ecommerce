@@ -11,6 +11,7 @@ import (
 	"Selecto-Ecommerce/internal/delivery/http/middleware"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
+	"Selecto-Ecommerce/internal/infrastructure/gestionar"
 	"Selecto-Ecommerce/internal/jobs"
 	"Selecto-Ecommerce/internal/repository/postgres"
 	"Selecto-Ecommerce/internal/shared/logging"
@@ -135,6 +136,10 @@ func SetupRouter(
 	admin.GET("/admin/orders/:id", handlers.AdminGetOrderHandler(db))
 	admin.POST("/admin/orders/:id/cancel", handlers.AdminCancelOrderHandler(db, logger))
 	admin.PATCH("/admin/orders/:id/shipment", handlers.AdminUpdateShipmentHandler(db, cfg, logger, notifiers...))
+	admin.GET("/admin/integrations/gestionar/status", handlers.AdminGestionarStatusHandler(cfg))
+	admin.GET("/admin/integrations/gestionar/pickup-times", handlers.AdminGestionarPickupTimesHandler(
+		cfg, gestionar.NewClient(cfg.GestionarAPIBaseURL, cfg.GestionarSecretToken, nil),
+	))
 	admin.GET("/admin/customers", handlers.AdminListCustomersHandler(db))
 	admin.GET("/admin/customers/:id", handlers.AdminGetCustomerHandler(db))
 	admin.GET("/admin/marketing/subscriptions", handlers.AdminOperationsListMarketingSubscriptionsHandler(db))

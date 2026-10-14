@@ -48,6 +48,8 @@ func LoadConfig() *Config {
 		BrevoListID:               getIntEnv("BREVO_LIST_ID", 0),
 		BrevoAPIBaseURL:           strings.TrimRight(getNonEmptyEnv("BREVO_API_BASE_URL", "https://api.brevo.com/v3"), "/"),
 		BrevoWebhookToken:         strings.TrimSpace(getEnv("BREVO_WEBHOOK_TOKEN", "")),
+		GestionarAPIBaseURL:       strings.TrimRight(strings.TrimSpace(getEnv("GESTIONAR_API_BASE_URL", "")), "/"),
+		GestionarSecretToken:      strings.TrimSpace(getEnv("GESTIONAR_SECRET_TOKEN_KEY", "")),
 		MarketingWorkerBatchSize:  getIntEnv("MARKETING_WORKER_BATCH_SIZE", 20),
 		EmailWorkerInterval:       getDurationEnv("EMAIL_WORKER_INTERVAL", 10*time.Second),
 		EmailWorkerBatchSize:      getIntEnv("EMAIL_WORKER_BATCH_SIZE", 20),
