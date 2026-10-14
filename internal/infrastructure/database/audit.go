@@ -23,7 +23,7 @@ var requiredCommerceColumns = map[string][]string{
 	"categories":                   {"id", "name", "slug", "active", "sort_order", "created_at"},
 	"schema_migrations":            {"version", "checksum", "applied_at"},
 	"products":                     {"id", "name", "price", "stock", "active", "sku", "description", "category", "category_id", "specifications", "archived_at", "created_at", "updated_at"},
-	"product_reviews":              {"id", "product_id", "user_id", "order_id", "rating", "title", "comment", "status", "moderated_by", "moderated_at", "created_at", "updated_at"},
+	"product_reviews":              {"id", "product_id", "user_id", "order_id", "rating", "title", "comment", "status", "pinned", "moderated_by", "moderated_at", "created_at", "updated_at"},
 	"users":                        {"id", "email", "password", "role", "first_name", "last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "email_verified_at", "session_version"},
 	"orders":                       {"id", "user_id", "status", "total", "created_at", "expires_at", "paid_at", "cancelled_at", "payment_status", "payment_id", "active_payment_preference_id", "active_checkout_url", "active_payment_environment", "idempotency_key", "request_hash", "payment_provider", "provider_payment_id"},
 	"order_items":                  {"id", "order_id", "product_id", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
@@ -55,6 +55,7 @@ var requiredCommerceIndexes = []string{
 	"idx_orders_provider_payment_id",
 	"idx_product_reviews_public",
 	"idx_product_reviews_moderation",
+	"idx_product_reviews_public_pinned",
 }
 
 var requiredCommerceConstraints = []string{
@@ -66,6 +67,7 @@ var requiredCommerceConstraints = []string{
 	"product_options_name_not_blank",
 	"product_options_values_array",
 	"products_specifications_object",
+	"product_reviews_pinned_published",
 }
 
 func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {

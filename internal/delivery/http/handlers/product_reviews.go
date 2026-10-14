@@ -58,11 +58,11 @@ func ListProductReviewsHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		rows, err := db.Pool.Query(c, `SELECT r.id,r.rating,r.title,r.comment,r.created_at,
+		rows, err := db.Pool.Query(c, `SELECT r.id,r.rating,r.title,r.comment,r.pinned,r.created_at,
 			COALESCE(NULLIF(BTRIM(u.first_name),''),'Cliente'),LEFT(COALESCE(u.last_name,''),1)
 			FROM product_reviews r JOIN users u ON u.id=r.user_id
 			WHERE r.product_id=$1 AND r.status='published'
-			ORDER BY r.created_at DESC,r.id DESC LIMIT $2 OFFSET $3`, productID, page.PageSize, page.Offset)
+			ORDER BY r.pinned DESC,r.created_at DESC,r.id DESC LIMIT $2 OFFSET $3`, productID, page.PageSize, page.Offset)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -72,8 +72,9 @@ func ListProductReviewsHandler(db *database.DB) gin.HandlerFunc {
 		for rows.Next() {
 			var id, rating int
 			var title, comment, firstName, lastInitial string
+			var pinned bool
 			var createdAt time.Time
-			if err := rows.Scan(&id, &rating, &title, &comment, &createdAt, &firstName, &lastInitial); err != nil {
+			if err := rows.Scan(&id, &rating, &title, &comment, &pinned, &createdAt, &firstName, &lastInitial); err != nil {
 				apperrors.Internal(c)
 				return
 			}
@@ -81,7 +82,7 @@ func ListProductReviewsHandler(db *database.DB) gin.HandlerFunc {
 			if lastInitial != "" {
 				reviewer += " " + lastInitial + "."
 			}
-			items = append(items, gin.H{"id": utils.EncodeID(id), "rating": rating, "title": title, "comment": comment, "reviewer": reviewer, "verified_purchase": true, "created_at": createdAt})
+			items = append(items, gin.H{"id": utils.EncodeID(id), "rating": rating, "title": title, "comment": comment, "reviewer": reviewer, "verified_purchase": true, "pinned": pinned, "created_at": createdAt})
 		}
 		c.JSON(http.StatusOK, gin.H{"items": items, "page": page.Page, "page_size": page.PageSize, "total": total, "summary": productReviewSummary{Average: average, Count: total}})
 	}
@@ -122,7 +123,7 @@ func SubmitProductReviewHandler(db *database.DB) gin.HandlerFunc {
 			WHERE u.email=$1 AND oi.product_id=$2 AND o.status='paid' AND p.archived_at IS NULL
 			ORDER BY COALESCE(o.paid_at,o.created_at) DESC LIMIT 1`, email, productID).Scan(&userID, &orderID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeForbidden, "a paid purchase is required to review this product", nil)
+			apperrors.JSON(c, http.StatusForbidden, apperrors.CodeReviewPurchaseRequired, "Para reseñar este producto, necesitás una compra pagada que figure en tu historial.", nil)
 			return
 		}
 		if err != nil {
@@ -130,10 +131,15 @@ func SubmitProductReviewHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		var reviewID int
-		err = tx.QueryRow(c, `INSERT INTO product_reviews(product_id,user_id,order_id,rating,title,comment)
-			VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,product_id) DO UPDATE SET
+		err = tx.QueryRow(c, `INSERT INTO product_reviews(product_id,user_id,order_id,rating,title,comment,status,pinned)
+			VALUES($1,$2,$3,$4,$5,$6,'published',FALSE) ON CONFLICT(user_id,product_id) DO UPDATE SET
 			order_id=EXCLUDED.order_id,rating=EXCLUDED.rating,title=EXCLUDED.title,comment=EXCLUDED.comment,
-			status='pending',moderated_by=NULL,moderated_at=NULL,moderation_note='',updated_at=NOW() RETURNING id`, productID, userID, orderID, input.Rating, input.Title, input.Comment).Scan(&reviewID)
+			status='published',pinned=FALSE,moderated_by=NULL,moderated_at=NULL,moderation_note='',updated_at=NOW()
+			WHERE product_reviews.status <> 'rejected' RETURNING id`, productID, userID, orderID, input.Rating, input.Title, input.Comment).Scan(&reviewID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeReviewRemoved, "Esta reseña fue retirada por moderación y no se puede volver a publicar desde acá. Contactanos si necesitás revisarla.", nil)
+			return
+		}
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -146,7 +152,7 @@ func SubmitProductReviewHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"id": utils.EncodeID(reviewID), "status": "pending"})
+		c.JSON(http.StatusCreated, gin.H{"id": utils.EncodeID(reviewID), "status": "published"})
 	}
 }
 
