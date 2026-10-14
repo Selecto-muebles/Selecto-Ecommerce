@@ -42,6 +42,8 @@ type Config struct {
 	BrevoListID               int
 	BrevoAPIBaseURL           string
 	BrevoWebhookToken         string
+	GestionarAPIBaseURL       string
+	GestionarSecretToken      string
 	MarketingWorkerBatchSize  int
 	EmailWorkerInterval       time.Duration
 	EmailWorkerBatchSize      int
@@ -107,6 +109,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.validateBrevo(); err != nil {
+		return err
+	}
+	if err := c.validateGestionar(); err != nil {
 		return err
 	}
 	if isCloudRunURL(c.PaymentsServiceURL) && c.PaymentsIDTokenAudience == "" {
