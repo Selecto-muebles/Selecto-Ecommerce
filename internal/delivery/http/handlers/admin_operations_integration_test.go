@@ -1,18 +1,21 @@
 package handlers
 
 import (
-	"Selecto-Ecommerce/internal/infrastructure/database"
-	"Selecto-Ecommerce/internal/repository/postgres"
-	"Selecto-Ecommerce/internal/service/catalog"
-	"Selecto-Ecommerce/internal/shared/utils"
+	"bytes"
 	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/repository/postgres"
+	"Selecto-Ecommerce/internal/service/catalog"
+	"Selecto-Ecommerce/internal/shared/utils"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestCategoryOperationsPreserveProductIdentityAndRollbackMissingReorder(t *testing.T) {
@@ -96,6 +99,68 @@ func TestReviewCanBeRemoderatedAndAuditPreservesReason(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM audit_logs WHERE entity_type='product_review' AND entity_id=$1", review).Scan(&audits); err != nil || audits != 4 {
 		t.Fatalf("audit: %d %v", audits, err)
+	}
+}
+func TestReviewPinAndRemovalAreAuditedAndCannotBeBypassedByResubmission(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	user, product, order := seedPendingOrder(t, pool, 2, 1)
+	var review int
+	if err := pool.QueryRow(ctx, "INSERT INTO product_reviews(product_id,user_id,order_id,rating,title,comment,status) VALUES($1,$2,$3,5,'Review','Verified text','published') RETURNING id", product, user, order).Scan(&review); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE orders SET status='paid',payment_status='paid',paid_at=NOW() WHERE id=$1", order); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM product_reviews WHERE id=$1", review)
+		_, _ = pool.Exec(ctx, "DELETE FROM audit_logs WHERE entity_type='product_review' AND entity_id=$1", review)
+		cleanupOrderFixture(ctx, pool, order, product, user)
+	})
+	moderate := func(body string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Set("email", "moderator@selecto.test")
+		c.Params = gin.Params{{Key: "id", Value: utils.EncodeID(review)}}
+		c.Request = httptest.NewRequest(http.MethodPatch, "/admin/product-reviews/"+utils.EncodeID(review), strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		AdminOperationsModerateProductReviewHandler(&database.DB{Pool: pool})(c)
+		return recorder
+	}
+	if response := moderate(`{"pinned":true}`); response.Code != http.StatusOK {
+		t.Fatalf("pin status=%d body=%s", response.Code, response.Body)
+	}
+	if response := moderate(`{"status":"rejected","note":"Contenido ofensivo"}`); response.Code != http.StatusOK {
+		t.Fatalf("remove status=%d body=%s", response.Code, response.Body)
+	}
+	var status string
+	var pinned bool
+	if err := pool.QueryRow(ctx, "SELECT status,pinned FROM product_reviews WHERE id=$1", review).Scan(&status, &pinned); err != nil || status != "rejected" || pinned {
+		t.Fatalf("review after removal status=%q pinned=%t err=%v", status, pinned, err)
+	}
+	if total := listPublishedReviews(t, pool, utils.EncodeID(product)); total != 0 {
+		t.Fatalf("removed review visible publicly: total=%d", total)
+	}
+	var email string
+	if err := pool.QueryRow(ctx, "SELECT email FROM users WHERE id=$1", user).Scan(&email); err != nil {
+		t.Fatal(err)
+	}
+	resubmit := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(resubmit)
+	c.Set("email", email)
+	c.Params = gin.Params{{Key: "id", Value: utils.EncodeID(product)}}
+	c.Request = httptest.NewRequest(http.MethodPost, "/products/"+utils.EncodeID(product)+"/reviews", bytes.NewBufferString(`{"rating":5,"title":"Again","comment":"A second public version"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	SubmitProductReviewHandler(&database.DB{Pool: pool})(c)
+	if resubmit.Code != http.StatusConflict || !strings.Contains(resubmit.Body.String(), "review_removed") {
+		t.Fatalf("removed review resubmission status=%d body=%s", resubmit.Code, resubmit.Body.String())
+	}
+	if err := pool.QueryRow(ctx, "SELECT status,pinned FROM product_reviews WHERE id=$1", review).Scan(&status, &pinned); err != nil || status != "rejected" || pinned {
+		t.Fatalf("customer resubmission bypassed removal status=%q pinned=%t err=%v", status, pinned, err)
+	}
+	var audits int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM audit_logs WHERE entity_type='product_review' AND entity_id=$1", review).Scan(&audits); err != nil || audits != 3 {
+		t.Fatalf("expected pin, unpin and removal audit events; got %d err=%v", audits, err)
 	}
 }
 func TestComparablePeriodsAndShipmentAgeIgnoreNoteEdits(t *testing.T) {

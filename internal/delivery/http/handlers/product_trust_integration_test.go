@@ -18,16 +18,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestPaidBuyerReviewRequiresModerationAndBecomesPublic(t *testing.T) {
+func TestPaidBuyerReviewPublishesImmediately(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
 	suffix := time.Now().UnixNano()
 	email := fmt.Sprintf("review-%d@selecto.test", suffix)
-	var userID, productID, orderID int
+	var userID, productID, otherProductID, orderID int
 	if err := pool.QueryRow(ctx, `INSERT INTO users(email,password,role,first_name,last_name) VALUES($1,'hash','user','Ana','Pérez') RETURNING id`, email).Scan(&userID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO products(name,sku,price,stock,active,specifications) VALUES($1,$2,100,2,TRUE,'{"Material":"Acero"}') RETURNING id`, fmt.Sprintf("review-product-%d", suffix), fmt.Sprintf("REV-%d", suffix)).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO products(name,sku,price,stock,active) VALUES($1,$2,100,2,TRUE) RETURNING id`, fmt.Sprintf("other-review-product-%d", suffix), fmt.Sprintf("REV-OTHER-%d", suffix)).Scan(&otherProductID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO orders(user_id,status,total,payment_status,paid_at) VALUES($1,'paid',100,'paid',NOW()) RETURNING id`, userID).Scan(&orderID); err != nil {
@@ -38,14 +41,34 @@ func TestPaidBuyerReviewRequiresModerationAndBecomesPublic(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM product_reviews WHERE product_id=$1", productID)
+		_, _ = pool.Exec(ctx, "DELETE FROM product_reviews WHERE product_id=$1", otherProductID)
 		_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", orderID)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
+		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", otherProductID)
 		_, _ = pool.Exec(ctx, "DELETE FROM users WHERE id=$1", userID)
 	})
 
+	otherProductPublicID := utils.EncodeID(otherProductID)
+	denied := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(denied)
+	c.Set("email", email)
+	c.Request = httptest.NewRequest(http.MethodPost, "/products/"+otherProductPublicID+"/reviews", bytes.NewBufferString(`{"rating":5,"title":"Excelente","comment":"Muy firme y bien terminado."}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: otherProductPublicID}}
+	SubmitProductReviewHandler(&database.DB{Pool: pool})(c)
+	var deniedPayload struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if denied.Code != http.StatusForbidden || json.Unmarshal(denied.Body.Bytes(), &deniedPayload) != nil || deniedPayload.ErrorCode != "review_purchase_required" {
+		t.Fatalf("review without purchase of this product status=%d body=%s", denied.Code, denied.Body.String())
+	}
+	if total := listPublishedReviews(t, pool, otherProductPublicID); total != 0 {
+		t.Fatalf("review for unpurchased product was stored: total=%d", total)
+	}
+
 	productPublicID := utils.EncodeID(productID)
 	submit := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(submit)
+	c, _ = gin.CreateTestContext(submit)
 	c.Set("email", email)
 	c.Request = httptest.NewRequest(http.MethodPost, "/products/"+productPublicID+"/reviews", bytes.NewBufferString(`{"rating":5,"title":"Excelente","comment":"Muy firme y bien terminado."}`))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -55,28 +78,26 @@ func TestPaidBuyerReviewRequiresModerationAndBecomesPublic(t *testing.T) {
 		t.Fatalf("submit status=%d body=%s", submit.Code, submit.Body.String())
 	}
 	var submitted struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(submit.Body.Bytes(), &submitted); err != nil {
 		t.Fatal(err)
 	}
 
-	before := listPublishedReviews(t, pool, productPublicID)
-	if before != 0 {
-		t.Fatalf("pending review visible publicly: total=%d", before)
-	}
-	moderate := httptest.NewRecorder()
-	c, _ = gin.CreateTestContext(moderate)
-	c.Set("email", "admin@selecto.test")
-	c.Request = httptest.NewRequest(http.MethodPatch, "/admin/product-reviews/"+submitted.ID, bytes.NewBufferString(`{"status":"published"}`))
-	c.Request.Header.Set("Content-Type", "application/json")
-	c.Params = gin.Params{{Key: "id", Value: submitted.ID}}
-	AdminModerateProductReviewHandler(&database.DB{Pool: pool})(c)
-	if moderate.Code != http.StatusOK {
-		t.Fatalf("moderate status=%d body=%s", moderate.Code, moderate.Body.String())
+	if submitted.Status != "published" {
+		t.Fatalf("submit status=%q, want published", submitted.Status)
 	}
 	if total := listPublishedReviews(t, pool, productPublicID); total != 1 {
-		t.Fatalf("published review total=%d, want 1", total)
+		t.Fatalf("immediately published review total=%d, want 1", total)
+	}
+	var pinned bool
+	reviewID, err := utils.DecodeID(submitted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT pinned FROM product_reviews WHERE id=$1", reviewID).Scan(&pinned); err != nil || pinned {
+		t.Fatalf("new review pinned=%t err=%v, want unpinned", pinned, err)
 	}
 }
 
