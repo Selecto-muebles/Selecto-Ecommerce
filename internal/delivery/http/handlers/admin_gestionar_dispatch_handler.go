@@ -33,8 +33,8 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 				COALESCE(a.street_address,''), COALESCE(a.street_number,''), COALESCE(a.locality,''),
 				COALESCE(a.province,''), COALESCE(a.postal_code,''), COALESCE(a.phone_number,''), u.email,
 				(SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id),
-				(SELECT COUNT(*) FROM order_items oi JOIN products p ON p.id=oi.product_id
-				 WHERE oi.order_id=o.id AND BTRIM(COALESCE(p.sku,''))='')
+				(SELECT COUNT(*) FROM order_items oi
+				 WHERE oi.order_id=o.id AND BTRIM(oi.sku_snapshot)='')
 			FROM orders o JOIN users u ON u.id=o.user_id
 			LEFT JOIN order_shipping_addresses a ON a.order_id=o.id
 			LEFT JOIN shipments s ON s.order_id=o.id
@@ -101,8 +101,8 @@ func AdminGestionarDispatchPreviewHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		rows, err := db.Pool.Query(c, `SELECT COALESCE(p.sku,''), p.name, oi.quantity, oi.price::text
-			FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id`, orderID)
+		rows, err := db.Pool.Query(c, `SELECT oi.sku_snapshot, oi.product_name_snapshot, oi.quantity, oi.price::text
+			FROM order_items oi WHERE oi.order_id=$1 ORDER BY oi.id`, orderID)
 		if err != nil {
 			apperrors.Internal(c)
 			return

@@ -26,7 +26,7 @@ var requiredCommerceColumns = map[string][]string{
 	"product_reviews":              {"id", "product_id", "user_id", "order_id", "rating", "title", "comment", "status", "pinned", "moderated_by", "moderated_at", "created_at", "updated_at"},
 	"users":                        {"id", "email", "password", "role", "first_name", "last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "email_verified_at", "session_version"},
 	"orders":                       {"id", "user_id", "status", "total", "created_at", "expires_at", "paid_at", "cancelled_at", "payment_status", "payment_id", "active_payment_preference_id", "active_checkout_url", "active_payment_environment", "idempotency_key", "request_hash", "payment_provider", "provider_payment_id"},
-	"order_items":                  {"id", "order_id", "product_id", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
+	"order_items":                  {"id", "order_id", "product_id", "product_name_snapshot", "sku_snapshot", "quantity", "price", "original_unit_price", "discount_percent", "selected_options"},
 	"payment_webhook_events":       {"id", "event_key", "payment_id", "order_id", "status", "amount_cents", "received_at", "processed_at", "result", "payment_provider", "provider_payment_id"},
 	"audit_logs":                   {"id", "actor_email", "action", "entity_type", "entity_id", "metadata", "created_at"},
 	"product_images":               {"id", "product_id", "mime_type", "alt_text", "sort_order", "content", "size_bytes", "created_at"},
