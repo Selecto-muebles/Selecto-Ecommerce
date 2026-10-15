@@ -38,9 +38,11 @@ func insertShippingAddress(ctx context.Context, tx pgx.Tx, orderID int, profile 
 func insertOrderItems(ctx context.Context, tx pgx.Tx, orderID int, items []reservedOrderItem) error {
 	for _, item := range items {
 		if _, err := tx.Exec(ctx, `INSERT INTO order_items (
-			order_id, product_id, quantity, price, original_unit_price, discount_percent, selected_options
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)`, orderID, item.productID, item.quantity,
-			item.price.DecimalString(), item.originalPrice.DecimalString(), item.discountPercent, item.selectedOptions); err != nil {
+			order_id, product_id, product_name_snapshot, sku_snapshot, quantity,
+			price, original_unit_price, discount_percent, selected_options
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, orderID, item.productID, item.productName,
+			item.sku, item.quantity, item.price.DecimalString(), item.originalPrice.DecimalString(),
+			item.discountPercent, item.selectedOptions); err != nil {
 			return err
 		}
 	}

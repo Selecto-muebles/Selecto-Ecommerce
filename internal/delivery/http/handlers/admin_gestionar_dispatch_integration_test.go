@@ -34,8 +34,8 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 		t.Fatalf("seed order: %v", err)
 	}
 	t.Cleanup(func() { cleanupOrderFixture(ctx, pool, orderID, productID, userID) })
-	if _, err := pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,quantity,price)
-		VALUES($1,$2,1,100)`, orderID, productID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,product_name_snapshot,sku_snapshot,quantity,price)
+		VALUES($1,$2,'Producto de prueba','SEL-TEST-001',1,100)`, orderID, productID); err != nil {
 		t.Fatalf("seed item: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO order_shipping_addresses
@@ -81,8 +81,28 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 		t.Fatalf("queue status=%d body=%s", queueRecorder.Code, queueRecorder.Body.String())
 	}
 
-	if _, err := pool.Exec(ctx, `UPDATE products SET sku=NULL WHERE id=$1`, productID); err != nil {
-		t.Fatalf("remove sku: %v", err)
+	if _, err := pool.Exec(ctx, `UPDATE products SET name='Nombre cambiado', sku=NULL WHERE id=$1`, productID); err != nil {
+		t.Fatalf("change catalog after purchase: %v", err)
+	}
+	previewRecorder = httptest.NewRecorder()
+	previewContext, _ = gin.CreateTestContext(previewRecorder)
+	previewContext.Request = httptest.NewRequest(http.MethodGet, "/admin/integrations/gestionar/dispatches/x/preview", nil)
+	previewContext.Params = gin.Params{{Key: "id", Value: utils.EncodeID(orderID)}}
+	AdminGestionarDispatchPreviewHandler(db)(previewContext)
+	if previewRecorder.Code != http.StatusOK || !strings.Contains(previewRecorder.Body.String(), `"sku":"SEL-TEST-001"`) ||
+		!strings.Contains(previewRecorder.Body.String(), `"name":"Producto de prueba"`) ||
+		strings.Contains(previewRecorder.Body.String(), "Nombre cambiado") || !strings.Contains(previewRecorder.Body.String(), `"data_ready":true`) {
+		t.Fatalf("dispatch snapshot changed with catalog: %s", previewRecorder.Body.String())
+	}
+	queueRecorder = httptest.NewRecorder()
+	queueContext, _ = gin.CreateTestContext(queueRecorder)
+	queueContext.Request = httptest.NewRequest(http.MethodGet, "/admin/integrations/gestionar/dispatches", nil)
+	AdminGestionarDispatchesHandler(db)(queueContext)
+	if queueRecorder.Code != http.StatusOK || !strings.Contains(queueRecorder.Body.String(), `"data_ready":true`) {
+		t.Fatalf("dispatch queue changed with catalog: %s", queueRecorder.Body.String())
+	}
+	if _, err := pool.Exec(ctx, `UPDATE order_items SET sku_snapshot='' WHERE order_id=$1`, orderID); err != nil {
+		t.Fatalf("remove order sku snapshot: %v", err)
 	}
 	previewRecorder = httptest.NewRecorder()
 	previewContext, _ = gin.CreateTestContext(previewRecorder)

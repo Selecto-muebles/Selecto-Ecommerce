@@ -42,7 +42,7 @@ func TestCreateOrderUsesPerOrderShippingSnapshot(t *testing.T) {
 		VALUES ($1,'unused','user','Cuenta','Original','12345678','Calle cuenta','100','1000','Buenos Aires','CABA','1112345678') RETURNING id`, email).Scan(&userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	if err := pool.QueryRow(ctx, "INSERT INTO products (name,price,stock,active) VALUES ('Shipping product',100,5,TRUE) RETURNING id").Scan(&productID); err != nil {
+	if err := pool.QueryRow(ctx, "INSERT INTO products (name,sku,price,stock,active) VALUES ('Shipping product','SEL-ORIGINAL',100,5,TRUE) RETURNING id").Scan(&productID); err != nil {
 		t.Fatalf("seed product: %v", err)
 	}
 	var orderID int
@@ -84,5 +84,15 @@ func TestCreateOrderUsesPerOrderShippingSnapshot(t *testing.T) {
 	}
 	if accountStreet != "Calle cuenta" {
 		t.Fatalf("account profile changed to %q", accountStreet)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE products SET name='Renamed product', sku='SEL-CHANGED' WHERE id=$1", productID); err != nil {
+		t.Fatalf("change catalog after purchase: %v", err)
+	}
+	var productNameSnapshot, skuSnapshot string
+	if err := pool.QueryRow(ctx, `SELECT product_name_snapshot, sku_snapshot FROM order_items WHERE order_id=$1`, orderID).Scan(&productNameSnapshot, &skuSnapshot); err != nil {
+		t.Fatalf("read dispatch snapshot: %v", err)
+	}
+	if productNameSnapshot != "Shipping product" || skuSnapshot != "SEL-ORIGINAL" {
+		t.Fatalf("dispatch snapshot changed to %q/%q", productNameSnapshot, skuSnapshot)
 	}
 }

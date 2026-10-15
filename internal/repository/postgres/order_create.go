@@ -26,6 +26,8 @@ func NewOrderRepository(db *database.DB, cfg *config.Config) *OrderRepository {
 
 type reservedOrderItem struct {
 	productID       int
+	productName     string
+	sku             string
 	quantity        int
 	price           money.Cents
 	originalPrice   money.Cents
@@ -153,7 +155,8 @@ func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.Prepa
 		quantity := prepared.QuantityByProduct[productID]
 		var priceCents int64
 		var stock int
-		err := tx.QueryRow(ctx, "SELECT ROUND(price * 100)::BIGINT, stock FROM products WHERE id=$1 AND active=TRUE FOR UPDATE", productID).Scan(&priceCents, &stock)
+		var productName, sku string
+		err := tx.QueryRow(ctx, "SELECT ROUND(price * 100)::BIGINT, stock, name, COALESCE(sku, '') FROM products WHERE id=$1 AND active=TRUE FOR UPDATE", productID).Scan(&priceCents, &stock, &productName, &sku)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil, nil, orderservice.InvalidProductError{ProductID: productID}
 		}
@@ -178,7 +181,8 @@ func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.Prepa
 		reservations = append(reservations, orderservice.Reservation{ProductID: productID, Quantity: quantity, RemainingStock: stock - quantity})
 		for _, item := range grouped[productID] {
 			items = append(items, reservedOrderItem{
-				productID: productID, quantity: item.Quantity, price: price, originalPrice: originalPrice,
+				productID: productID, productName: productName, sku: sku,
+				quantity: item.Quantity, price: price, originalPrice: originalPrice,
 				discountPercent: pricing.DiscountPercent, selectedOptions: item.SelectedOptions,
 			})
 		}

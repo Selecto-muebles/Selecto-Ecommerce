@@ -5,7 +5,9 @@
 - El backoffice puede consultar órdenes **pagadas** que aún están en `preparing` o
   `ready_for_dispatch`. Incluye órdenes atrasadas; no se limita al día actual.
 - La vista previa usa `order_shipping_addresses`, la dirección congelada en la
-  compra, y no el perfil actual del cliente.
+  compra, y no el perfil actual del cliente. Nombre de producto y SKU también
+  quedan congelados en `order_items` para nuevas compras; los pedidos anteriores
+  sólo pueden tomar el valor del catálogo al aplicar la migración 021.
 - Se señalan dirección, contacto, artículos y SKU faltantes. `data_ready` sólo
   significa que los datos internos están completos: **no autoriza un POST**.
 - Las rutas son administrativas y de solo lectura. No crean paquetes, retiros
@@ -13,6 +15,20 @@
   `disabled_pending_contract`.
 - El seguimiento manual existente sigue disponible para registrar información
   **confirmada** por logística; no se debe inventar un número de guía.
+
+## Qué se puede certificar ahora, sin acceso a Gestionar
+
+- Aplicar las migraciones en PostgreSQL aislado, repetirlas y auditar el esquema.
+  Probar creación de orden, snapshot de dirección y SKU, bandeja y vista previa,
+  incluidos datos faltantes y cambios posteriores del catálogo.
+- Ejecutar `go test -race ./...` con `TEST_DATABASE_URL` local. Las pruebas del
+  cliente de lectura usan un servidor TLS simulado y verifican token sólo en el
+  servidor, límites de respuesta, errores y rechazo de redirecciones.
+- El E2E del admin usa respuestas simuladas: prueba la UI, no la aceptación de
+  paquetes ni retiros por Gestionar. Un selector de Postman con nombre
+  `Gestionar External Api` no convierte `localhost` o `{{base_url}}` en sandbox.
+- No usar el token publicado en ejemplos para pruebas ni considerarlo secreto
+  de producción. Sin URL real y contrato confirmado no hay prueba externa.
 
 ## Contrato que debe confirmar Gestionar
 
@@ -30,6 +46,9 @@
    timeout. Acordar si existe un ID de pedido de Selecto en el contrato.
 5. `platform_id` de Selecto (los ejemplos usan valores de otros marketplaces),
    `pickup_time_id`, formato de solicitud de retiro y política para reintentos.
+   El ejemplo de `POST /api/external-client/pickup` usa `orders_ids`,
+   `platform_id` y `pickup_time_id`, pero sólo muestra un error 400 por paquete
+   inexistente; no demuestra el alta exitosa de un retiro.
 6. Endpoint o webhook para estados, firma/autenticación, catálogo de estados,
    paginación, cadencia de consulta y URL de seguimiento.
 
