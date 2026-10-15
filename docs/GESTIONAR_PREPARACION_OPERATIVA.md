@@ -13,6 +13,13 @@
 - Las rutas son administrativas y de solo lectura. No crean paquetes, retiros
   ni estados externos. `provider_submission` permanece en
   `disabled_pending_contract`.
+- La migración 022 agrega un registro durable, todavía sin activar: una clave
+  única por pedido para paquetes, lotes de retiro sin pedidos duplicados y
+  eventos de estado externo deduplicados. Reservar no equivale a enviar. Sólo
+  las pruebas ejercitan esas transiciones; ninguna ruta HTTP las invoca.
+- Un intento que pudiera haber llegado al proveedor queda `uncertain` tras un
+  timeout. No se reenvía automáticamente: primero hay que consultar a
+  Gestionar si creó el paquete o el retiro y asociar su ID externo.
 - El seguimiento manual existente sigue disponible para registrar información
   **confirmada** por logística; no se debe inventar un número de guía.
 
@@ -29,6 +36,9 @@
   `Gestionar External Api` no convierte `localhost` o `{{base_url}}` en sandbox.
 - No usar el token publicado en ejemplos para pruebas ni considerarlo secreto
   de producción. Sin URL real y contrato confirmado no hay prueba externa.
+- La migración 022 y su auditoría se probaron en PostgreSQL aislado; el schema
+  de producción requiere la activación manual habitual. El gateway también
+  necesita una API Config nueva: desplegar Cloud Run no habilita sus rutas.
 
 ## Qué muestran las dos variantes del importador
 
@@ -73,12 +83,13 @@
 
 ## Puerta para activar escrituras
 
-Con el sandbox configurado en servidor y sin exponer secretos al navegador:
-crear un paquete sintético, verificar un único ID externo persistido, repetir
-la misma solicitud para demostrar ausencia de duplicados, solicitar un retiro
-de prueba, consultar su estado y probar errores/timeout. Recién después de
-eso se implementa y habilita el envío automático con un cambio de configuración
-separado. No reutilizar los datos de producción para pruebas.
+Tras confirmar el contrato, falta conectar el registro transaccional a un
+adaptador HTTP y a acciones administrativas protegidas. Debe transformar la
+venta normal pagada al formato confirmado, crear un paquete sintético, guardar
+el ID externo, reconciliar un timeout sin duplicar, pedir un retiro por lote,
+consultar estados autenticados y mapearlos a `shipments` sin retrocesos. Sólo
+entonces se habilita el envío con un cambio de configuración separado. No
+reutilizar datos ni credenciales de producción para estas pruebas.
 
 Después de merge y despliegue manual del backend, el gateway requiere su
 activación manual habitual; verificar sus cuatro rutas con

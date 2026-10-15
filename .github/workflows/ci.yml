@@ -53,6 +53,8 @@ jobs:
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/020_product_review_publication_and_pinning.sql
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/021_order_item_dispatch_snapshot.sql
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/021_order_item_dispatch_snapshot.sql
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/022_gestionar_dispatch_ledger.sql
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/022_gestionar_dispatch_ledger.sql
       - name: Verify gofmt
         shell: bash
         run: |
@@ -108,6 +110,8 @@ jobs:
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/020_product_review_publication_and_pinning.sql
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/021_order_item_dispatch_snapshot.sql
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/021_order_item_dispatch_snapshot.sql
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/022_gestionar_dispatch_ledger.sql
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/022_gestionar_dispatch_ledger.sql
           test "$(psql "$TEST_DATABASE_URL" -Atqc "SELECT to_regclass('commerce.marketing_subscriptions') IS NOT NULL AND to_regclass('public.marketing_subscriptions') IS NULL")" = "t"
       - run: go test ./...
 
