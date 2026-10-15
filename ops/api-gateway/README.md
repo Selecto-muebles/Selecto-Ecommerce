@@ -1,9 +1,9 @@
 # API Gateway de Ecommerce durante el corte a Selecto
 
-`openapi.json` contiene las 79 rutas vigentes de Ecommerce, incluidas categorías,
+`openapi.json` contiene las 81 rutas vigentes de Ecommerce, incluidas categorías,
 contenido editorial, reseñas, recuperación de acceso administrativo, términos
-públicos, arrepentimiento, edición versionada de artículos legales y las dos
-consultas administrativas de solo lectura de Gestionar. Mantiene
+públicos, arrepentimiento, edición versionada de artículos legales y cuatro
+consultas administrativas de solo lectura para preparar la operación con Gestionar. Mantiene
 los contratos existentes, incluidos `GET`/`OPTIONS
 /admin/payments/records/{record_id}` y `DELETE /admin/products/{id}`. El backend
 continúa siendo el Cloud Run privado
@@ -43,22 +43,24 @@ gcloud api-gateway gateways update destry-ecommerce-staging-gw \
 ```
 
 Antes de actualizar se debe capturar el ID activo para rollback y comprobar que
-la configuración compilada conserva las 79 rutas esperadas. Después se prueban
+la configuración compilada conserva las 81 rutas esperadas. Después se prueban
 `/health`, catálogo, autenticación, CORS, recuperación administrativa,
 eliminación protegida de productos, newsletter, comunicaciones y detalle
 multiproveedor del Backoffice. También se comprueba que
 `GET https://api.selectosport.com/legal/terms` responde 200 con versión y
 `body_markdown`, y que el panel admin puede cargar el documento y la bandeja.
-Para Gestionar, verificar que `GET /admin/integrations/gestionar/status` y
-`GET /admin/integrations/gestionar/pickup-times` devuelven 401 sin sesión
-(no 404), y que ambos preflights `OPTIONS` desde `admin.selectosport.com`
-responden correctamente. Se puede repetir la comprobación con:
+Para Gestionar, verificar que las cuatro rutas administrativas de lectura
+(`status`, `pickup-times`, `dispatches` y `dispatches/{id}/preview`) devuelven
+401 sin sesión (no 404), y que sus preflights `OPTIONS` desde
+`admin.selectosport.com` responden correctamente. Se puede repetir la comprobación con:
 
 ```bash
 SELECTO_API_URL=https://api.selectosport.com node ../../scripts/smoke_gestionar_gateway.mjs
 ```
 
-Esta comprobación no envía pedidos a Gestionar ni certifica su API externa.
+La bandeja y la vista previa muestran datos internos de órdenes pagadas. No envían
+pedidos a Gestionar ni certifican su API externa; el proveedor permanece
+desactivado hasta confirmar contrato de ventas normales, URL HTTPS y credenciales.
 
 ## Rollback
 

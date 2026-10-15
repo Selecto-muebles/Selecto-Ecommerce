@@ -19,6 +19,8 @@ const origin = "https://admin.selectosport.com";
 const paths = [
   "/admin/integrations/gestionar/status",
   "/admin/integrations/gestionar/pickup-times",
+  "/admin/integrations/gestionar/dispatches",
+  "/admin/integrations/gestionar/dispatches/smoke/preview",
 ];
 
 for (const path of paths) {

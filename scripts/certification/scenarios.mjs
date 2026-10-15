@@ -50,7 +50,8 @@ export async function runScenarios({ apiURL, secret, sql, password, payloads }) 
   const shipping = { first_name: 'Ana', last_name: 'Prueba', dni: '87654321', street_address: 'Calle de prueba', street_number: '100',
     postal_code: '1000', province: 'Buenos Aires', locality: 'CABA', phone_number: '1112345678',
     requested_delivery_date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) };
-  const orderInput = (productID, quantity) => ({ items: [{ product_id: productID, quantity }], shipping_address: shipping });
+  const terms = expectStatus(await request('/legal/terms'), 200, 'published legal terms');
+  const orderInput = (productID, quantity) => ({ items: [{ product_id: productID, quantity }], shipping_address: shipping, terms_version: terms.version });
   const key = randomUUID(), input = orderInput(item.id, 3);
   const order = expectStatus(await request('/orders', 'POST', input, token, { 'Idempotency-Key': key }), 201, 'create order');
   assert.equal(order.total, 2850, 'three units receive 5% discount');
@@ -75,12 +76,11 @@ export async function runScenarios({ apiURL, secret, sql, password, payloads }) 
   evidence.push('signed simulated payment + duplicate callback; NOT a real Mobbex certification');
   expectStatus(await request(`/products/${item.id}/reviews`, 'POST', { rating: 5, title: 'Aceptación real del flujo', comment: 'Comentario sintético de certificación, no de un cliente real.' }, otherToken), 403, 'review without paid purchase denied');
   const review = expectStatus(await request(`/products/${item.id}/reviews`, 'POST', { rating: 5, title: 'Aceptación real del flujo', comment: 'Comentario sintético de certificación, no de un cliente real.' }, token), 201, 'verified paid buyer review');
-  assert.equal(expectStatus(await request(`/products/${item.id}/reviews`), 200, 'pending review hidden').total, 0);
-  expectStatus(await request(`/admin/product-reviews/${review.id}`, 'PATCH', { status: 'published', note: 'Prueba local' }, adminToken), 200, 'publish review');
+  assert.equal(review.status, 'published');
   assert.equal(expectStatus(await request(`/products/${item.id}/reviews`), 200, 'public verified review').total, 1);
   expectStatus(await request(`/admin/product-reviews/${review.id}`, 'PATCH', { status: 'pending', note: 'Remoderación local' }, adminToken), 200, 'remoderation removes from public');
   assert.equal(expectStatus(await request(`/products/${item.id}/reviews`), 200, 'review withdrawn').total, 0);
-  evidence.push('paid purchase required for review; pending/published/remoderated visibility');
+  evidence.push('paid purchase required for review; immediate publication and remoderation visibility');
   const limited = await product('Stock concurrente', 10);
   const concurrent = await Promise.all(Array.from({ length: 40 }, () => request('/orders', 'POST', orderInput(limited.id, 1), token, { 'Idempotency-Key': randomUUID() })));
   assert.equal(concurrent.filter(result => result.status === 201).length, 10, 'exactly available stock reserved');

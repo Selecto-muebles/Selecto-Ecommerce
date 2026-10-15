@@ -498,6 +498,34 @@
         }
       }
     },
+    "/admin/integrations/gestionar/dispatches": {
+      "get": {
+        "operationId": "AdminGestionarDispatches",
+        "responses": {
+          "200": {"description": "Pedidos pagados pendientes de despacho y validación local"},
+          "401": {"description": "Se requiere autenticación administrativa"}
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminGestionarDispatches",
+        "responses": {"204": {"description": "Preflight CORS"}}
+      }
+    },
+    "/admin/integrations/gestionar/dispatches/{id}/preview": {
+      "get": {
+        "operationId": "AdminGestionarDispatchPreview",
+        "parameters": [{"name": "id", "in": "path", "required": true, "type": "string"}],
+        "responses": {
+          "200": {"description": "Vista previa local del pedido sin envío al proveedor"},
+          "401": {"description": "Se requiere autenticación administrativa"}
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminGestionarDispatchPreview",
+        "parameters": [{"name": "id", "in": "path", "required": true, "type": "string"}],
+        "responses": {"204": {"description": "Preflight CORS"}}
+      }
+    },
     "/admin/orders/{id}": {
       "get": {
         "operationId": "AdminGetOrder",
