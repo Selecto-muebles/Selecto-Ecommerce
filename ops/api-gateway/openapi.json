@@ -466,6 +466,38 @@
         "parameters": []
       }
     },
+    "/admin/integrations/gestionar/status": {
+      "get": {
+        "operationId": "AdminGestionarStatus",
+        "responses": {
+          "200": {"description": "Estado de la integración de solo lectura"},
+          "401": {"description": "Se requiere autenticación administrativa"}
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminGestionarStatus",
+        "responses": {
+          "204": {"description": "Preflight CORS"}
+        }
+      }
+    },
+    "/admin/integrations/gestionar/pickup-times": {
+      "get": {
+        "operationId": "AdminGestionarPickupTimes",
+        "responses": {
+          "200": {"description": "Horarios de retiro disponibles"},
+          "401": {"description": "Se requiere autenticación administrativa"},
+          "502": {"description": "Error al consultar Gestionar"},
+          "503": {"description": "Integración sin configurar"}
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminGestionarPickupTimes",
+        "responses": {
+          "204": {"description": "Preflight CORS"}
+        }
+      }
+    },
     "/admin/orders/{id}": {
       "get": {
         "operationId": "AdminGetOrder",
