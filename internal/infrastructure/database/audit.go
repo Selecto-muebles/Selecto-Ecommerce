@@ -34,6 +34,10 @@ var requiredCommerceColumns = map[string][]string{
 	"user_identities":              {"id", "user_id", "provider", "provider_subject", "provider_email", "created_at"},
 	"order_shipping_addresses":     {"order_id", "recipient_first_name", "recipient_last_name", "dni", "street_address", "street_number", "postal_code", "province", "locality", "phone_number", "requested_delivery_date", "created_at"},
 	"shipments":                    {"id", "order_id", "status", "carrier", "tracking_number", "tracking_url", "estimated_delivery_at", "shipped_at", "delivered_at", "customer_note", "created_at", "updated_at"},
+	"gestionar_dispatches":         {"order_id", "submission_key", "package_state", "external_package_id", "attempted_at", "confirmed_at", "last_error_code", "created_at", "updated_at"},
+	"gestionar_pickup_batches":     {"id", "request_key", "pickup_time_id", "state", "external_pickup_id", "attempted_at", "confirmed_at", "last_error_code", "created_at", "updated_at"},
+	"gestionar_pickup_orders":      {"batch_id", "order_id"},
+	"gestionar_status_events":      {"id", "order_id", "event_key", "external_status", "occurred_at", "received_at"},
 	"account_tokens":               {"id", "user_id", "purpose", "token_hash", "expires_at", "consumed_at", "created_at"},
 	"email_outbox":                 {"id", "event_key", "recipient", "template", "payload", "status", "attempts", "next_attempt_at", "locked_at", "sent_at", "last_error", "created_at", "updated_at"},
 	"marketing_subscriptions":      {"id", "email", "status", "source", "consent_at", "unsubscribed_at", "created_at", "updated_at"},
@@ -56,6 +60,8 @@ var requiredCommerceIndexes = []string{
 	"idx_product_reviews_public",
 	"idx_product_reviews_moderation",
 	"idx_product_reviews_public_pinned",
+	"idx_gestionar_dispatches_state",
+	"idx_gestionar_status_events_order",
 }
 
 var requiredCommerceConstraints = []string{
@@ -68,6 +74,8 @@ var requiredCommerceConstraints = []string{
 	"product_options_values_array",
 	"products_specifications_object",
 	"product_reviews_pinned_published",
+	"gestionar_confirmed_package_id",
+	"gestionar_status_nonempty",
 }
 
 func AuditSchema(ctx context.Context, pool *pgxpool.Pool) (AuditReport, error) {
