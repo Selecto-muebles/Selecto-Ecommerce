@@ -30,14 +30,33 @@
 - No usar el token publicado en ejemplos para pruebas ni considerarlo secreto
   de producción. Sin URL real y contrato confirmado no hay prueba externa.
 
+## Qué muestran las dos variantes del importador
+
+- El ejemplo JSON de `POST /api/external-client/package/not-linked-register`
+  envuelve los envíos en `packages[]`. Cada paquete muestra
+  `destinatario`, `direccion`, `localidad`, `codigo_postal`, `telefono`,
+  `correo`, `tipo_de_entrega`, `fecha_de_venta`, `turbo`, `monto_a_pagar`,
+  `observaciones`, `sku`, `cantidad` y `nombre`. El sobre usa
+  `type: "fullfilment"` y `condition: "cambio"` (se conserva la grafía del
+  ejemplo). Esto **no demuestra** que esos valores correspondan a una venta
+  normal ya pagada en Selecto.
+- La otra variante presentada bajo «Import masivo de paquetes no vinculados»
+  usa `multipart/form-data` con `file` y `condition`. No equivale a enviar el
+  JSON anterior ni demuestra que el archivo sea obligatorio para Selecto.
+- Los valores de ejemplo para fecha, código postal, `turbo` y
+  `monto_a_pagar` no son un contrato validado. Tampoco se proporcionó una
+  respuesta exitosa de creación de paquetes. Por eso el adaptador de escritura
+  sigue desactivado y no se transforman pedidos reales a ninguno de los dos
+  formatos por conjetura.
+
 ## Contrato que debe confirmar Gestionar
 
 1. URL HTTPS de prueba y credenciales separadas de producción. No copiar el
    token que aparece en ejemplos públicos; rotarlo si tiene validez real.
-2. Si `POST /api/external-client/package/not-linked-register` acepta las ventas
-   normales de Selecto por JSON. El ejemplo público JSON muestra
-   `type: fullfilment` y `condition: cambio`; también hay un ejemplo Excel. No
-   asumir que esos valores sirven para ventas ordinarias.
+2. Si la venta normal de Selecto entra por el JSON o por el importador de
+   archivos de `POST /api/external-client/package/not-linked-register`, y qué
+   `type` y `condition` corresponden a esa venta. Los ejemplos disponibles
+   mezclan fulfillment y cambios; no asumir que sirven para ventas ordinarias.
 3. Campos obligatorios, formato de fecha/código postal/teléfono, tratamiento
    de pedidos con varios artículos y significado de `monto_a_pagar` cuando el
    cliente **ya pagó online**. Nunca cobrar contra entrega sin confirmación.
