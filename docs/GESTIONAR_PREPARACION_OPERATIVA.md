@@ -17,6 +17,10 @@
   única por pedido para paquetes, lotes de retiro sin pedidos duplicados y
   eventos de estado externo deduplicados. Reservar no equivale a enviar. Sólo
   las pruebas ejercitan esas transiciones; ninguna ruta HTTP las invoca.
+- La bandeja y la vista previa administrativas muestran el estado de ese
+  registro (incluidos IDs externos y estados inciertos) si existe. Un evento
+  externo sin contrato confirmado se muestra sólo al admin; no cambia por sí
+  mismo el estado visible al cliente ni dispara notificaciones.
 - Un intento que pudiera haber llegado al proveedor queda `uncertain` tras un
   timeout. No se reenvía automáticamente: primero hay que consultar a
   Gestionar si creó el paquete o el retiro y asociar su ID externo.

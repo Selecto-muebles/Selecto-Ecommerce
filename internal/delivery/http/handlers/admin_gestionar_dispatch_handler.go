@@ -34,10 +34,14 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 				COALESCE(a.province,''), COALESCE(a.postal_code,''), COALESCE(a.phone_number,''), u.email,
 				(SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id),
 				(SELECT COUNT(*) FROM order_items oi
-				 WHERE oi.order_id=o.id AND BTRIM(oi.sku_snapshot)='')
+				 WHERE oi.order_id=o.id AND BTRIM(oi.sku_snapshot)=''),
+				COALESCE(gd.package_state,'not_started'), COALESCE(gpb.state,'not_started')
 			FROM orders o JOIN users u ON u.id=o.user_id
 			LEFT JOIN order_shipping_addresses a ON a.order_id=o.id
 			LEFT JOIN shipments s ON s.order_id=o.id
+			LEFT JOIN gestionar_dispatches gd ON gd.order_id=o.id
+			LEFT JOIN gestionar_pickup_orders gpo ON gpo.order_id=o.id
+			LEFT JOIN gestionar_pickup_batches gpb ON gpb.id=gpo.batch_id
 			WHERE `+where+`
 			ORDER BY o.paid_at DESC NULLS LAST, o.id DESC LIMIT $1 OFFSET $2`, page.PageSize, page.Offset)
 		if err != nil {
@@ -50,11 +54,12 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 			var id int
 			var paidAt sql.NullTime
 			var readiness shippingservice.GestionarReadiness
-			var firstName, lastName string
+			var firstName, lastName, packageState, pickupState string
 			if err := rows.Scan(&id, &readiness.OrderStatus, &readiness.ShipmentStatus, &paidAt,
 				&readiness.HasAddress, &firstName, &lastName, &readiness.Street, &readiness.StreetNumber,
 				&readiness.Locality, &readiness.Province, &readiness.PostalCode, &readiness.Phone,
-				&readiness.Email, &readiness.ItemCount, &readiness.MissingSKUs); err != nil {
+				&readiness.Email, &readiness.ItemCount, &readiness.MissingSKUs,
+				&packageState, &pickupState); err != nil {
 				apperrors.Internal(c)
 				return
 			}
@@ -65,6 +70,7 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 				"shipment_status": readiness.ShipmentStatus, "recipient_name": readiness.RecipientName,
 				"locality": readiness.Locality, "postal_code": readiness.PostalCode,
 				"data_ready": len(blockers) == 0, "blockers": blockers,
+				"provider_progress": gin.H{"package_state": packageState, "pickup_state": pickupState},
 			})
 		}
 		if rows.Err() != nil {
@@ -153,14 +159,52 @@ func AdminGestionarDispatchPreviewHandler(db *database.DB) gin.HandlerFunc {
 			}
 		}
 		blockers := readiness.Blockers()
+		providerProgress, err := gestionarProviderProgress(c, db, orderID)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"order": gin.H{"reference": utils.EncodeID(orderID), "status": status,
 				"paid_at": nullableTime(paidAt), "total_ars": totalARS},
 			"shipment_status": readiness.ShipmentStatus, "destination": destination,
 			"items": items, "data_ready": len(blockers) == 0, "blockers": blockers,
+			"provider_progress":   providerProgress,
 			"provider_submission": "disabled_pending_contract",
 		})
 	}
+}
+
+func gestionarProviderProgress(c *gin.Context, db *database.DB, orderID int) (gin.H, error) {
+	var packageState, externalPackageID, packageError string
+	var pickupState, externalPickupID, pickupError, latestStatus string
+	var packageAttemptedAt, pickupAttemptedAt, statusReceivedAt sql.NullTime
+	err := db.Pool.QueryRow(c, `SELECT COALESCE(d.package_state,'not_started'),
+		COALESCE(d.external_package_id,''), COALESCE(d.last_error_code,''), d.attempted_at,
+		COALESCE(b.state,'not_started'), COALESCE(b.external_pickup_id,''),
+		COALESCE(b.last_error_code,''), b.attempted_at,
+		COALESCE(e.external_status,''), e.received_at
+		FROM orders o
+		LEFT JOIN gestionar_dispatches d ON d.order_id=o.id
+		LEFT JOIN gestionar_pickup_orders po ON po.order_id=o.id
+		LEFT JOIN gestionar_pickup_batches b ON b.id=po.batch_id
+		LEFT JOIN LATERAL (
+			SELECT external_status,received_at FROM gestionar_status_events
+			WHERE order_id=o.id ORDER BY received_at DESC,id DESC LIMIT 1
+		) e ON TRUE WHERE o.id=$1`, orderID).Scan(
+		&packageState, &externalPackageID, &packageError, &packageAttemptedAt,
+		&pickupState, &externalPickupID, &pickupError, &pickupAttemptedAt,
+		&latestStatus, &statusReceivedAt)
+	if err != nil {
+		return nil, err
+	}
+	return gin.H{
+		"package_state": packageState, "external_package_id": externalPackageID,
+		"package_error_code": packageError, "package_attempted_at": nullableTime(packageAttemptedAt),
+		"pickup_state": pickupState, "external_pickup_id": externalPickupID,
+		"pickup_error_code": pickupError, "pickup_attempted_at": nullableTime(pickupAttemptedAt),
+		"latest_provider_status": latestStatus, "status_received_at": nullableTime(statusReceivedAt),
+	}, nil
 }
 
 func dateOnly(value *time.Time) any {

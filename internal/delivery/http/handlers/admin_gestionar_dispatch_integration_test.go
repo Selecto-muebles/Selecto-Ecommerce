@@ -59,7 +59,11 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 	var preview struct {
 		DataReady          bool   `json:"data_ready"`
 		ProviderSubmission string `json:"provider_submission"`
-		Destination        struct {
+		ProviderProgress   struct {
+			PackageState string `json:"package_state"`
+			PickupState  string `json:"pickup_state"`
+		} `json:"provider_progress"`
+		Destination struct {
 			RecipientName string `json:"recipient_name"`
 			StreetAddress string `json:"street_address"`
 		} `json:"destination"`
@@ -68,6 +72,7 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 		t.Fatalf("decode preview: %v", err)
 	}
 	if !preview.DataReady || preview.ProviderSubmission != "disabled_pending_contract" ||
+		preview.ProviderProgress.PackageState != "not_started" || preview.ProviderProgress.PickupState != "not_started" ||
 		preview.Destination.RecipientName != "Destino Real" || preview.Destination.StreetAddress != "Calle entrega" ||
 		strings.Contains(previewRecorder.Body.String(), "Dirección de perfil") {
 		t.Fatalf("unexpected preview: %s", previewRecorder.Body.String())
@@ -100,6 +105,41 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 	AdminGestionarDispatchesHandler(db)(queueContext)
 	if queueRecorder.Code != http.StatusOK || !strings.Contains(queueRecorder.Body.String(), `"data_ready":true`) {
 		t.Fatalf("dispatch queue changed with catalog: %s", queueRecorder.Body.String())
+	}
+	var pickupBatchID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO gestionar_pickup_batches
+		(request_key,pickup_time_id,state,last_error_code,attempted_at)
+		VALUES('test-pickup-progress',7,'uncertain','timeout',NOW()) RETURNING id`).Scan(&pickupBatchID); err != nil {
+		t.Fatalf("seed pickup progress: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM gestionar_pickup_batches WHERE id=$1`, pickupBatchID) })
+	if _, err := pool.Exec(ctx, `INSERT INTO gestionar_dispatches
+		(order_id,submission_key,package_state,external_package_id,attempted_at,confirmed_at)
+		VALUES($1,'test-package-progress','confirmed','test-external-package',NOW(),NOW())`, orderID); err != nil {
+		t.Fatalf("seed package progress: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO gestionar_pickup_orders(batch_id,order_id)
+		VALUES($1,$2)`, pickupBatchID, orderID); err != nil {
+		t.Fatalf("seed pickup association: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO gestionar_status_events(order_id,event_key,external_status)
+		VALUES($1,'test-event-progress','TEST_PROVIDER_STATUS')`, orderID); err != nil {
+		t.Fatalf("seed raw provider status: %v", err)
+	}
+	previewRecorder = httptest.NewRecorder()
+	previewContext, _ = gin.CreateTestContext(previewRecorder)
+	previewContext.Request = httptest.NewRequest(http.MethodGet, "/admin/integrations/gestionar/dispatches/x/preview", nil)
+	previewContext.Params = gin.Params{{Key: "id", Value: utils.EncodeID(orderID)}}
+	AdminGestionarDispatchPreviewHandler(db)(previewContext)
+	if previewRecorder.Code != http.StatusOK ||
+		!strings.Contains(previewRecorder.Body.String(), `"external_package_id":"test-external-package"`) ||
+		!strings.Contains(previewRecorder.Body.String(), `"pickup_state":"uncertain"`) ||
+		!strings.Contains(previewRecorder.Body.String(), `"latest_provider_status":"TEST_PROVIDER_STATUS"`) {
+		t.Fatalf("provider progress unavailable: %s", previewRecorder.Body.String())
+	}
+	var shipmentStatus string
+	if err := pool.QueryRow(ctx, `SELECT status FROM shipments WHERE order_id=$1`, orderID).Scan(&shipmentStatus); err != nil || shipmentStatus != "preparing" {
+		t.Fatalf("raw provider event changed customer shipment: %s err=%v", shipmentStatus, err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE order_items SET sku_snapshot='' WHERE order_id=$1`, orderID); err != nil {
 		t.Fatalf("remove order sku snapshot: %v", err)
