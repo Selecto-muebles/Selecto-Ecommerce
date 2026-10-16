@@ -97,6 +97,7 @@ func SetupRouter(
 	authorized.POST("/orders/:id/cancel", handlers.CancelOrderHandler(db, cfg, logger, notifiers...))
 	authorized.GET("/my-orders", handlers.GetMyOrdersHandler(db))
 	authorized.POST("/checkout", handlers.CheckoutHandler(db, cfg, logger))
+	authorized.POST("/checkout/card-payment", handlers.CardPaymentHandler(db, cfg))
 	authorized.POST("/products/:id/reviews", handlers.SubmitProductReviewHandler(db))
 	authorized.POST("/auth/google/link", handlers.GoogleLinkHandler(db, cfg, logger, nil))
 
