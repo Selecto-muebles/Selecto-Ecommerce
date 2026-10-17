@@ -33,9 +33,6 @@ func TestWithdrawalStatusTransitionsAreForwardOnly(t *testing.T) {
 func TestPublicWithdrawalIsUnauthenticatedIdempotentAndAuditable(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
-	if _, err := database.ApplyMigrations(ctx, pool); err != nil {
-		t.Fatalf("migrate integration database: %v", err)
-	}
 	db := &database.DB{Pool: pool}
 	termsRecorder := httptest.NewRecorder()
 	termsContext, _ := gin.CreateTestContext(termsRecorder)
