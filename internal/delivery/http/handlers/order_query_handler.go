@@ -48,7 +48,7 @@ func GetMyOrdersHandler(db *database.DB) gin.HandlerFunc {
 
 		rows, err := db.Pool.Query(
 			c,
-			`SELECT o.id, o.user_id, o.status, o.total, o.created_at
+			`SELECT o.id, o.user_id, o.status, COALESCE(o.payment_status,''), o.total, o.created_at
 			 FROM orders o
 			 JOIN users u ON u.id = o.user_id
 			 WHERE u.email = $1
@@ -65,7 +65,7 @@ func GetMyOrdersHandler(db *database.DB) gin.HandlerFunc {
 		for rows.Next() {
 			var orderID int
 			var order OrderResponse
-			if err := rows.Scan(&orderID, &order.UserID, &order.Status, &order.Total, &order.CreatedAt); err != nil {
+			if err := rows.Scan(&orderID, &order.UserID, &order.Status, &order.PaymentStatus, &order.Total, &order.CreatedAt); err != nil {
 				apperrors.Internal(c)
 				return
 			}
@@ -85,7 +85,7 @@ func GetMyOrdersHandler(db *database.DB) gin.HandlerFunc {
 }
 
 func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allowAnyUser bool) (*OrderResponse, error) {
-	query := `SELECT o.id, o.user_id, o.status, o.total, o.created_at
+	query := `SELECT o.id, o.user_id, o.status, COALESCE(o.payment_status,''), o.total, o.created_at
 		FROM orders o
 		JOIN users u ON u.id = o.user_id
 		WHERE o.id=$1`
@@ -97,7 +97,7 @@ func fetchOrder(c *gin.Context, db *database.DB, orderID int, email string, allo
 
 	var dbOrderID int
 	var order OrderResponse
-	err := db.Pool.QueryRow(c, query, args...).Scan(&dbOrderID, &order.UserID, &order.Status, &order.Total, &order.CreatedAt)
+	err := db.Pool.QueryRow(c, query, args...).Scan(&dbOrderID, &order.UserID, &order.Status, &order.PaymentStatus, &order.Total, &order.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

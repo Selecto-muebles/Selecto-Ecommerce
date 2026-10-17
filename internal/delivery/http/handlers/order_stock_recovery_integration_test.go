@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -63,6 +65,14 @@ func TestPaymentWebhookContractIsIdempotent(t *testing.T) {
 	}
 	if events != 1 || audits != 1 {
 		t.Fatalf("events/audits = %d/%d, want 1/1", events, audits)
+	}
+	var payload []byte
+	if err := pool.QueryRow(ctx, "SELECT payload FROM email_outbox WHERE event_key=$1", fmt.Sprintf("payment-status:%d:900001:paid", orderID)).Scan(&payload); err != nil {
+		t.Fatalf("paid confirmation was not queued: %v", err)
+	}
+	_, bodyHTML, err := mailinfra.Render("payment_status", payload)
+	if err != nil || !strings.Contains(bodyHTML, "Compra confirmada") || !strings.Contains(bodyHTML, "2 × RC2 product") || !strings.Contains(bodyHTML, "$ 200.00") || !strings.Contains(bodyHTML, "No válido como factura fiscal") {
+		t.Fatalf("paid confirmation is incomplete: %v %s", err, bodyHTML)
 	}
 }
 

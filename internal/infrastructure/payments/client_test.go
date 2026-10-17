@@ -61,3 +61,40 @@ func TestCreatePreferenceSignsInternalRequest(t *testing.T) {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }
+
+func TestCreateCardPaymentSignsTokenizedRequest(t *testing.T) {
+	const secret = "test-internal-secret-with-at-least-32-characters"
+	const key = "a17600a9-8051-4e4f-9074-1d8826117a99"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/create-card-payment" || r.Header.Get("Idempotency-Key") != key {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		var raw json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			t.Fatal(err)
+		}
+		var payload CardPaymentInput
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.OrderID != 17 || payload.PayerEmail != "cliente@example.com" || payload.Token != "tokenizado" || strings.Contains(string(raw), "transaction_amount") {
+			t.Fatalf("unexpected payment payload: %s", raw)
+		}
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write([]byte(r.Header.Get("X-Service-Timestamp")))
+		mac.Write([]byte("."))
+		mac.Write(raw)
+		want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+		if !hmac.Equal([]byte(r.Header.Get("X-Service-Signature")), []byte(want)) {
+			t.Fatal("invalid internal signature")
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"payment_id":77,"status":"pending","verification_pending":true}`))
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, time.Second, secret, "")
+	result, status, err := client.CreateCardPayment(t.Context(), CardPaymentInput{OrderID: 17, PreferenceID: "pref", Token: "tokenizado", PaymentMethodID: "visa", Installments: 1, PayerEmail: "cliente@example.com", IdempotencyKey: key}, "req", "corr")
+	if err != nil || status != http.StatusAccepted || result.PaymentID != 77 || !result.VerificationPending {
+		t.Fatalf("result=%+v status=%d err=%v", result, status, err)
+	}
+}

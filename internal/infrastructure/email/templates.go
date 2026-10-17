@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"strings"
 )
 
 func Render(template string, raw json.RawMessage) (string, string, error) {
@@ -28,6 +29,17 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 		content += `<section style="border:1px solid #bbb;padding:16px;margin:20px 0"><p style="margin:0 0 8px;font-size:12px;text-transform:uppercase">Constancia de orden</p><p style="margin:0"><strong>Total de productos: ` + value("total") + `</strong></p><p style="margin:8px 0 0;font-size:12px;color:#666">Documento informativo. No válido como factura fiscal.</p></section>`
 		return "Recibimos tu orden " + value("order_id"), wrapper(content + button("Ver mi orden", value("url"))), nil
 	case "payment_status":
+		if payload["total"] != nil && fmt.Sprint(payload["total"]) != "" {
+			content := `<h2>¡Compra confirmada!</h2><p>Recibimos el pago de tu orden <strong>` + value("order_id") + `</strong>.</p>`
+			if summary := fmt.Sprint(payload["items_summary"]); summary != "" && summary != "<nil>" {
+				content += `<p><strong>Productos</strong><br>` + strings.ReplaceAll(value("items_summary"), "\n", "<br>") + `</p>`
+			}
+			if delivery := fmt.Sprint(payload["delivery_summary"]); delivery != "" && delivery != "<nil>" {
+				content += `<p><strong>Entrega</strong><br>` + value("delivery_summary") + `</p>`
+			}
+			content += `<section style="border:1px solid #bbb;padding:16px;margin:20px 0"><p style="margin:0 0 8px;font-size:12px;text-transform:uppercase">Comprobante de pedido</p><p style="margin:0"><strong>Total pagado: ` + value("total") + `</strong></p><p style="margin:8px 0 0;font-size:12px;color:#666">Documento informativo. No válido como factura fiscal.</p></section>`
+			return "Compra confirmada · orden " + value("order_id"), wrapper(content + button("Ver detalle y entrega", value("url"))), nil
+		}
 		return "Actualización de pago de la orden " + value("order_id"), wrapper(`<h2>Estado del pago: ` + value("status_label") + `</h2><p>Orden ` + value("order_id") + `.</p>` + button("Consultar orden", value("url"))), nil
 	case "shipment_status":
 		content := `<h2>Tu entrega está ` + value("status_label") + `</h2><p>Orden ` + value("order_id") + `.</p>`

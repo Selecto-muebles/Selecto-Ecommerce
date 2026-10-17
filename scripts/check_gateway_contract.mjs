@@ -4,8 +4,9 @@ const spec = JSON.parse(
   readFileSync(new URL("../ops/api-gateway/openapi.json", import.meta.url), "utf8"),
 );
 
-const expectedPathCount = 81;
+const expectedPathCount = 82;
 const requiredMethods = new Map([
+  ["/checkout/card-payment", "post"],
   ["/health", "get"],
   ["/legal/terms", "get"],
   ["/consumer/withdrawals", "post"],
