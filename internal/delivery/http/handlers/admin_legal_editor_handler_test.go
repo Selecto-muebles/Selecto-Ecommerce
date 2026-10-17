@@ -17,9 +17,6 @@ import (
 func TestLegalArticleDraftAndPublicationKeepAcceptedVersionImmutable(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
-	if _, err := database.ApplyMigrations(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
 	db := &database.DB{Pool: pool}
 	var oldID, newID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM legal_documents WHERE slug='terms' AND published`).Scan(&oldID); err != nil {
@@ -151,9 +148,6 @@ func TestLegalArticleDraftAndPublicationKeepAcceptedVersionImmutable(t *testing.
 func TestLegalPublicationWithoutDraftCreatesNewVersion(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
-	if _, err := database.ApplyMigrations(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
 	db := &database.DB{Pool: pool}
 	var oldID, newID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM legal_documents WHERE slug='terms' AND published`).Scan(&oldID); err != nil {
