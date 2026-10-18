@@ -14,6 +14,26 @@
     "protocol": "h2"
   },
   "paths": {
+    "/payments/mercadopago/callback": {
+      "get": {"operationId":"MercadoPagoMarketplaceCallback","produces":["text/html"],"parameters":[{"name":"code","in":"query","type":"string"},{"name":"state","in":"query","type":"string"}],"responses":{"303":{"description":"Redirige a un resultado sin código OAuth"}}},
+      "options": {"operationId":"CorsMercadoPagoMarketplaceCallback","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/payments/mercadopago/resultado": {
+      "get": {"operationId":"MercadoPagoMarketplaceResult","produces":["text/html"],"parameters":[{"name":"estado","in":"query","type":"string"}],"responses":{"200":{"description":"Cuenta vinculada pendiente de aprobación"},"400":{"description":"Vinculación no completada"}}},
+      "options": {"operationId":"CorsMercadoPagoMarketplaceResult","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/marketplace/status": {
+      "get": {"operationId":"AdminMarketplaceStatus","responses":{"200":{"description":"Estado de cuenta vendedora"}}},
+      "options": {"operationId":"CorsAdminMarketplaceStatus","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/marketplace/start": {
+      "post": {"operationId":"AdminMarketplaceStart","responses":{"200":{"description":"Enlace de autorización OAuth"}}},
+      "options": {"operationId":"CorsAdminMarketplaceStart","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/admin/marketplace/activate": {
+      "post": {"operationId":"AdminMarketplaceActivate","responses":{"200":{"description":"Cuenta vendedora aprobada"}}},
+      "options": {"operationId":"CorsAdminMarketplaceActivate","responses":{"204":{"description":"Preflight"}}}
+    },
     "/legal/terms": {
       "get": {"operationId":"PublicLegalTerms","responses":{"200":{"description":"Published legal terms"}}},
       "options": {"operationId":"CorsPublicLegalTerms","responses":{"204":{"description":"Preflight"}}}

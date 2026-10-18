@@ -85,6 +85,8 @@ func SetupRouter(
 	r.POST("/marketing/newsletter/unsubscribe/confirm", handlers.NewsletterUnsubscribeConfirmHandler(db, marketingNotifiers...))
 	r.POST("/communications/brevo/webhook", handlers.BrevoWebhookHandler(db, cfg))
 	r.POST("/payments/webhook", middleware.InternalWebhookAuth(cfg.InternalWebhookSecret, 5*time.Minute), handlers.PaymentWebhookHandler(db, cfg, logger, notifiers...))
+	r.GET("/payments/mercadopago/callback", handlers.MarketplaceOAuthCallback(cfg))
+	r.GET("/payments/mercadopago/resultado", handlers.MarketplaceOAuthResult)
 
 	authorized := r.Group("/")
 	authorized.Use(middleware.AuthMiddleware(db, cfg.JWTSecret))
@@ -160,6 +162,9 @@ func SetupRouter(
 	admin.GET("/admin/payment-webhooks", handlers.AdminPaymentsProxyHandler(cfg, "/internal/admin/webhook-events"))
 	admin.GET("/admin/payment-notifications", handlers.AdminPaymentsProxyHandler(cfg, "/internal/admin/ecommerce-notifications"))
 	admin.GET("/admin/payments-metrics", handlers.AdminPaymentsProxyHandler(cfg, "/internal/admin/metrics"))
+	admin.GET("/admin/marketplace/status", handlers.AdminMarketplaceProxyHandler(cfg, "/internal/admin/marketplace/status"))
+	admin.POST("/admin/marketplace/start", handlers.AdminMarketplaceProxyHandler(cfg, "/internal/admin/marketplace/start"))
+	admin.POST("/admin/marketplace/activate", handlers.AdminMarketplaceProxyHandler(cfg, "/internal/admin/marketplace/activate"))
 
 	admin.POST("/products", handlers.CreateProductHandler(db, logger))
 	admin.GET("/admin/metrics", handlers.GetMetricsHandler(db, logger))
