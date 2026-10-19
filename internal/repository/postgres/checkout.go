@@ -26,8 +26,9 @@ func NewCheckoutRepository(db *database.DB, cfg *config.Config) *CheckoutReposit
 func (repository *CheckoutRepository) LoadAvailable(ctx context.Context, orderID int, email string) (checkoutservice.Order, error) {
 	var order checkoutservice.Order
 	var preferenceID, checkoutURL, environment sql.NullString
+	var marketplace bool
 	err := repository.db.Pool.QueryRow(ctx, `SELECT o.status, ROUND(o.total * 100)::BIGINT,
-		o.active_payment_preference_id, o.active_checkout_url, o.active_payment_environment,
+		o.active_payment_preference_id, o.active_checkout_url, o.active_payment_environment, o.active_payment_marketplace,
 		u.email,
 		COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), TRIM(CONCAT_WS(' ', s.recipient_first_name, s.recipient_last_name))),
 		COALESCE(NULLIF(u.dni, ''), s.dni, '')
@@ -36,7 +37,7 @@ func (repository *CheckoutRepository) LoadAvailable(ctx context.Context, orderID
 		WHERE o.id=$1 AND u.email=$2
 		AND COALESCE(o.expires_at, o.created_at + make_interval(secs => $3)) > NOW()`,
 		orderID, email, int(repository.cfg.OrderPendingTTL.Seconds()),
-	).Scan(&order.Status, &order.Total, &preferenceID, &checkoutURL, &environment,
+	).Scan(&order.Status, &order.Total, &preferenceID, &checkoutURL, &environment, &marketplace,
 		&order.Customer.Email, &order.Customer.Name, &order.Customer.Identification)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return order, checkoutservice.ErrOrderNotFound
@@ -45,17 +46,17 @@ func (repository *CheckoutRepository) LoadAvailable(ctx context.Context, orderID
 		return order, err
 	}
 	order.ID = orderID
-	order.Preference = nullablePreference(preferenceID, checkoutURL, environment)
+	order.Preference = nullablePreference(preferenceID, checkoutURL, environment, marketplace)
 	return order, nil
 }
 
 func (repository *CheckoutRepository) SavePreference(ctx context.Context, orderID int, preference checkoutservice.Preference) (bool, error) {
 	command, err := repository.db.Pool.Exec(ctx, `UPDATE orders SET
 		active_payment_preference_id=$1, active_checkout_url=$2, active_payment_environment=$3,
-		expires_at=NOW() + make_interval(secs => $6)
-		WHERE id=$4 AND status=$5 AND active_payment_preference_id IS NULL
-		AND COALESCE(expires_at, created_at + make_interval(secs => $6)) > NOW()`,
-		preference.ID, preference.CheckoutURL, preference.Environment, orderID, domain.OrderStatusPending,
+		active_payment_marketplace=$4, expires_at=NOW() + make_interval(secs => $7)
+		WHERE id=$5 AND status=$6 AND active_payment_preference_id IS NULL
+		AND COALESCE(expires_at, created_at + make_interval(secs => $7)) > NOW()`,
+		preference.ID, preference.CheckoutURL, preference.Environment, preference.Marketplace, orderID, domain.OrderStatusPending,
 		int(repository.cfg.OrderPendingTTL.Seconds()),
 	)
 	return command.RowsAffected() == 1, err
@@ -63,16 +64,17 @@ func (repository *CheckoutRepository) SavePreference(ctx context.Context, orderI
 
 func (repository *CheckoutRepository) FindPendingPreference(ctx context.Context, orderID int) (*checkoutservice.Preference, error) {
 	var preferenceID, checkoutURL, environment sql.NullString
-	err := repository.db.Pool.QueryRow(ctx, `SELECT active_payment_preference_id, active_checkout_url, active_payment_environment
+	var marketplace bool
+	err := repository.db.Pool.QueryRow(ctx, `SELECT active_payment_preference_id, active_checkout_url, active_payment_environment, active_payment_marketplace
 		FROM orders WHERE id=$1 AND status=$2`, orderID, domain.OrderStatusPending,
-	).Scan(&preferenceID, &checkoutURL, &environment)
+	).Scan(&preferenceID, &checkoutURL, &environment, &marketplace)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return nullablePreference(preferenceID, checkoutURL, environment), nil
+	return nullablePreference(preferenceID, checkoutURL, environment, marketplace), nil
 }
 
 func (repository *CheckoutRepository) WriteAudit(ctx context.Context, orderID int, email, preferenceID string) error {
@@ -81,9 +83,9 @@ func (repository *CheckoutRepository) WriteAudit(ctx context.Context, orderID in
 	return err
 }
 
-func nullablePreference(id, checkoutURL, environment sql.NullString) *checkoutservice.Preference {
+func nullablePreference(id, checkoutURL, environment sql.NullString, marketplace bool) *checkoutservice.Preference {
 	if !id.Valid || !checkoutURL.Valid || id.String == "" || checkoutURL.String == "" {
 		return nil
 	}
-	return &checkoutservice.Preference{ID: id.String, CheckoutURL: checkoutURL.String, Environment: environment.String}
+	return &checkoutservice.Preference{ID: id.String, CheckoutURL: checkoutURL.String, Environment: environment.String, Marketplace: marketplace}
 }

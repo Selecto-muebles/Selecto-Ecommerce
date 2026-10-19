@@ -121,8 +121,9 @@ func (client *Client) CreatePreference(ctx context.Context, orderID int, amount 
 	preferenceID, _ := result["preference_id"].(string)
 	checkoutURL, _ := result["checkout_url"].(string)
 	environment, _ := result["environment"].(string)
+	marketplace, _ := result["marketplace"].(bool)
 	if preferenceID == "" || checkoutURL == "" {
 		return checkoutservice.Preference{}, checkoutservice.GatewayError{Kind: checkoutservice.GatewayIncomplete}
 	}
-	return checkoutservice.Preference{ID: preferenceID, CheckoutURL: checkoutURL, Environment: environment, Payload: result}, nil
+	return checkoutservice.Preference{ID: preferenceID, CheckoutURL: checkoutURL, Environment: environment, Marketplace: marketplace, Payload: result}, nil
 }

@@ -48,7 +48,7 @@ func TestCreatePreferenceSignsInternalRequest(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"preference_id":"pref-1","checkout_url":"https://example.test/checkout","environment":"test"}`))
+		_, _ = w.Write([]byte(`{"preference_id":"pref-1","checkout_url":"https://example.test/checkout","environment":"production","marketplace":true}`))
 	}))
 	defer server.Close()
 
@@ -57,7 +57,7 @@ func TestCreatePreferenceSignsInternalRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.ID != "pref-1" || !strings.HasPrefix(result.CheckoutURL, "https://") {
+	if result.ID != "pref-1" || !strings.HasPrefix(result.CheckoutURL, "https://") || !result.Marketplace || result.Environment != "production" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }

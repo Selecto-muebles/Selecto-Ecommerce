@@ -50,14 +50,14 @@ func checkoutTestLogger() *slog.Logger {
 }
 
 func TestStartReusesExistingPreferenceWithoutGatewayCall(t *testing.T) {
-	preference := &Preference{ID: "pref-1", CheckoutURL: "https://checkout.example/1"}
+	preference := &Preference{ID: "pref-1", CheckoutURL: "https://checkout.example/1", Marketplace: true}
 	repository := &checkoutRepositoryStub{order: Order{ID: 9, Status: "pending", Preference: preference}}
 	gateway := &checkoutGatewayStub{}
 	result, err := NewService(repository, gateway, checkoutTestLogger()).Start(context.Background(), Input{OrderID: 9})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Reused || result.Preference.ID != "pref-1" || gateway.calls != 0 {
+	if !result.Reused || result.Preference.ID != "pref-1" || !result.Preference.Marketplace || gateway.calls != 0 {
 		t.Fatalf("unexpected checkout result: %+v gateway_calls=%d", result, gateway.calls)
 	}
 }
