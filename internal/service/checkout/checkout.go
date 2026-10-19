@@ -40,6 +40,7 @@ type Preference struct {
 	ID          string
 	CheckoutURL string
 	Environment string
+	Marketplace bool
 	Payload     map[string]any
 }
 

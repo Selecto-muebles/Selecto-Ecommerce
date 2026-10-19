@@ -48,7 +48,7 @@ func CheckoutHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) g
 		}
 		payload := result.Preference.Payload
 		if payload == nil {
-			payload = map[string]any{"preference_id": result.Preference.ID, "checkout_url": result.Preference.CheckoutURL}
+			payload = map[string]any{"preference_id": result.Preference.ID, "checkout_url": result.Preference.CheckoutURL, "marketplace": result.Preference.Marketplace}
 			if result.Preference.Environment != "" {
 				payload["environment"] = result.Preference.Environment
 			}
