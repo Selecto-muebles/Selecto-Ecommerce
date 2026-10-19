@@ -31,7 +31,7 @@ func TestPaidEmailConfirmsPurchaseWithoutClaimingFiscalInvoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(subject, "Compra confirmada") || !strings.Contains(body, "Comprobante de pedido") ||
+	if !strings.Contains(subject, "Compra confirmada") || !strings.Contains(body, "Gracias por tu compra") || !strings.Contains(body, "Comprobante de pedido") ||
 		!strings.Contains(body, "$ 1250.00") || !strings.Contains(body, "Calle 123, CABA") || !strings.Contains(body, "2 × Par de mancuernas") ||
 		strings.Contains(body, "<script>") || !strings.Contains(body, "&lt;script&gt;") || !strings.Contains(body, "No válido como factura fiscal") {
 		t.Fatalf("paid email must confirm purchase without claiming a fiscal invoice: %s", body)
