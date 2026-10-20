@@ -76,6 +76,42 @@ func TestPaymentWebhookContractIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPaidWebhookRecoversCancelledExpiredOrder(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	userID, productID, orderID := seedPendingOrder(t, pool, 0, 1)
+	t.Cleanup(func() { cleanupOrderFixture(ctx, pool, orderID, productID, userID) })
+	if _, err := pool.Exec(ctx, "UPDATE orders SET expires_at=TIMESTAMPTZ '2000-01-01 00:00:00+00', active_payment_preference_id='late-paid-pref' WHERE id=$1", orderID); err != nil {
+		t.Fatalf("expire order with preference: %v", err)
+	}
+	if released, err := ReleaseExpiredPendingOrdersWithAudit(ctx, &database.DB{Pool: pool}, 15*time.Minute, 10); err != nil || released < 1 {
+		t.Fatalf("release order = %d, %v", released, err)
+	}
+
+	handler := PaymentWebhookHandler(&database.DB{Pool: pool}, &config.Config{StorefrontURL: "http://localhost:5173"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	body := fmt.Sprintf(`{"payment_id":900002,"order_id":%q,"amount":100,"status":"paid"}`, utils.EncodeID(orderID))
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/payments/webhook", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	handler(c)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("late paid webhook status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var status, paymentStatus string
+	var paymentID int64
+	var stock int
+	if err := pool.QueryRow(ctx, "SELECT status, payment_status, payment_id FROM orders WHERE id=$1", orderID).Scan(&status, &paymentStatus, &paymentID); err != nil {
+		t.Fatalf("read recovered order: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT stock FROM products WHERE id=$1", productID).Scan(&stock); err != nil {
+		t.Fatalf("read recovered stock: %v", err)
+	}
+	if status != "paid" || paymentStatus != "paid" || paymentID != 900002 || stock != 0 {
+		t.Fatalf("recovered order = %s/%s/%d, stock=%d", status, paymentStatus, paymentID, stock)
+	}
+}
+
 func TestExpiredOrderWithActivePreferenceReleasesStockOnceAcrossWorkers(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()

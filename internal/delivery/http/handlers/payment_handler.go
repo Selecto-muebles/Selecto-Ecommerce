@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PaymentWebhookInput struct {
@@ -52,10 +53,19 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		}
 
 		logger.Info(logging.EventPaymentWebhookReceived, "payment_id", input.PaymentID, "payment_provider", input.PaymentProvider, "provider_payment_id", input.ProviderPaymentID, "order_id", orderID, "public_id", utils.EncodeID(orderID), "status", newStatus)
+		internal := func(stage string, err error) {
+			fields := []any{"stage", stage, "error_type", fmt.Sprintf("%T", err), "order_id", orderID}
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) {
+				fields = append(fields, "pg_code", pgErr.Code, "pg_constraint", pgErr.ConstraintName, "pg_column", pgErr.ColumnName)
+			}
+			logger.Error("payment_webhook_internal_error", fields...)
+			apperrors.Internal(c)
+		}
 
 		tx, err := db.Pool.Begin(c)
 		if err != nil {
-			apperrors.Internal(c)
+			internal("begin", err)
 			return
 		}
 		defer tx.Rollback(c)
@@ -75,7 +85,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "order not found", nil)
 				return
 			}
-			apperrors.Internal(c)
+			internal("order_lock", err)
 			return
 		}
 
@@ -102,12 +112,12 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			amountValue,
 		)
 		if err != nil {
-			apperrors.Internal(c)
+			internal("event_insert", err)
 			return
 		}
 		if commandTag.RowsAffected() == 0 {
 			if err := tx.Commit(c); err != nil {
-				apperrors.Internal(c)
+				internal("duplicate_commit", err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": currentStatus})
@@ -117,7 +127,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		if currentStatus == "paid" {
 			logger.Info(logging.EventPaymentWebhookIgnoredPaid, "payment_id", input.PaymentID, "order_id", orderID)
 			if err := tx.Commit(c); err != nil {
-				apperrors.Internal(c)
+				internal("already_paid_commit", err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": "paid"})
@@ -140,7 +150,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				orderID,
 			)
 			if err != nil {
-				apperrors.Internal(c)
+				internal("nonpaid_order_update", err)
 				return
 			}
 			if _, err := tx.Exec(
@@ -149,12 +159,12 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				newStatus,
 				eventKey,
 			); err != nil {
-				apperrors.Internal(c)
+				internal("nonpaid_event_mark", err)
 				return
 			}
 			outboxID, err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus)
 			if err != nil {
-				apperrors.Internal(c)
+				internal("nonpaid_email_enqueue", err)
 				return
 			}
 			if _, err := tx.Exec(
@@ -166,11 +176,11 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				orderID,
 				fmt.Sprintf(`{"payment_id":%d,"payment_status":%q,"order_status":%q}`, input.PaymentID, newStatus, currentStatus),
 			); err != nil {
-				apperrors.Internal(c)
+				internal("nonpaid_audit_insert", err)
 				return
 			}
 			if err := tx.Commit(c); err != nil {
-				apperrors.Internal(c)
+				internal("nonpaid_commit", err)
 				return
 			}
 			mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
@@ -185,7 +195,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		if !domain.CanTransitionOrder(domain.OrderStatus(currentStatus), domain.OrderStatusPaid) && !recoveringPaidOrder {
 			logger.Info(logging.EventPaymentWebhookIgnoredTransition, "payment_id", input.PaymentID, "order_id", orderID, "current_status", currentStatus, "requested_status", newStatus)
 			if err := tx.Commit(c); err != nil {
-				apperrors.Internal(c)
+				internal("invalid_transition_commit", err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": currentStatus})
@@ -199,11 +209,11 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				logger.Warn(logging.EventPaymentWebhookAmountRejected, "payment_id", input.PaymentID, "order_id", orderID, "expected_cents", int64(orderTotal), "received_amount", *input.Amount, "reason", "amount_mismatch")
 			}
 			if _, err := tx.Exec(c, "UPDATE payment_webhook_events SET processed_at=NOW(), result=$1 WHERE event_key=$2", "ignored_amount_mismatch", eventKey); err != nil {
-				apperrors.Internal(c)
+				internal("amount_mismatch_mark", err)
 				return
 			}
 			if err := tx.Commit(c); err != nil {
-				apperrors.Internal(c)
+				internal("amount_mismatch_commit", err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "amount_mismatch"})
@@ -241,11 +251,11 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			orderID,
 		)
 		if err != nil {
-			apperrors.Internal(c)
+			internal("paid_order_update", err)
 			return
 		}
 		if _, err := tx.Exec(c, "INSERT INTO shipments (order_id, status) VALUES ($1, $2) ON CONFLICT (order_id) DO NOTHING", orderID, domain.ShipmentStatusPreparing); err != nil {
-			apperrors.Internal(c)
+			internal("shipment_insert", err)
 			return
 		}
 
@@ -255,12 +265,12 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			newStatus,
 			eventKey,
 		); err != nil {
-			apperrors.Internal(c)
+			internal("paid_event_mark", err)
 			return
 		}
 		outboxID, err := enqueuePaymentStatusEmail(c, tx, cfg, orderID, input.PaymentID, customerEmail, newStatus)
 		if err != nil {
-			apperrors.Internal(c)
+			internal("paid_email_enqueue", err)
 			return
 		}
 		if _, err := tx.Exec(
@@ -272,12 +282,12 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			orderID,
 			fmt.Sprintf(`{"payment_id":%d,"status":%q}`, input.PaymentID, newStatus),
 		); err != nil {
-			apperrors.Internal(c)
+			internal("paid_audit_insert", err)
 			return
 		}
 
 		if err := tx.Commit(c); err != nil {
-			apperrors.Internal(c)
+			internal("paid_commit", err)
 			return
 		}
 		mailinfra.NotifyAfterCommit(c.Request.Context(), outboxID, notifiers...)
