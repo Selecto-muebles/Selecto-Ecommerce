@@ -24,7 +24,7 @@ import (
 )
 
 type PaymentWebhookInput struct {
-	PaymentID         int            `json:"payment_id"`
+	PaymentID         int64          `json:"payment_id"`
 	PaymentProvider   string         `json:"payment_provider"`
 	ProviderPaymentID string         `json:"provider_payment_id"`
 	OrderID           utils.PublicID `json:"order_id" binding:"required"`
@@ -101,7 +101,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 		commandTag, err := tx.Exec(
 			c,
 			`INSERT INTO payment_webhook_events (event_key, payment_id, payment_provider, provider_payment_id, order_id, status, amount_cents)
-			 VALUES ($1, NULLIF($2, 0), NULLIF($3, ''), NULLIF($4, ''), $5, $6, CASE WHEN $7::NUMERIC IS NULL THEN NULL ELSE ROUND($7::NUMERIC * 100)::BIGINT END)
+			 VALUES ($1, NULLIF($2::BIGINT, 0::BIGINT), NULLIF($3, ''), NULLIF($4, ''), $5, $6, CASE WHEN $7::NUMERIC IS NULL THEN NULL ELSE ROUND($7::NUMERIC * 100)::BIGINT END)
 			 ON CONFLICT (event_key) DO NOTHING`,
 			eventKey,
 			input.PaymentID,
@@ -139,7 +139,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 				c,
 				`UPDATE orders
 					 SET payment_status=$1,
-					     payment_id=NULLIF($2, 0),
+					     payment_id=NULLIF($2::BIGINT, 0::BIGINT),
 					     payment_provider=NULLIF($3, ''),
 					     provider_payment_id=NULLIF($4, '')
 					 WHERE id=$5`,
@@ -228,7 +228,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			}
 		}
 
-		if existingPaymentID.Valid && existingPaymentID.Int64 != int64(input.PaymentID) && currentStatus == string(domain.OrderStatusPaid) {
+		if existingPaymentID.Valid && existingPaymentID.Int64 != input.PaymentID && currentStatus == string(domain.OrderStatusPaid) {
 			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "order already has a different payment", nil)
 			return
 		}
@@ -238,7 +238,7 @@ func PaymentWebhookHandler(db *database.DB, cfg *config.Config, logger *slog.Log
 			`UPDATE orders
 					 SET status=$1,
 					     payment_status=$1,
-					     payment_id=NULLIF($2, 0),
+					     payment_id=NULLIF($2::BIGINT, 0::BIGINT),
 					     payment_provider=NULLIF($3, ''),
 					     provider_payment_id=NULLIF($4, ''),
 					     paid_at=CASE WHEN $1='paid' THEN NOW() ELSE paid_at END,

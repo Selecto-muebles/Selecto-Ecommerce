@@ -22,7 +22,7 @@ func enqueueOrderCreatedEmail(ctx context.Context, db mailinfra.QueryRower, cfg 
 	})
 }
 
-func enqueuePaymentStatusEmail(ctx context.Context, db mailinfra.QueryRower, cfg *config.Config, orderID int, paymentID int, recipient, status string) (int64, error) {
+func enqueuePaymentStatusEmail(ctx context.Context, db mailinfra.QueryRower, cfg *config.Config, orderID int, paymentID int64, recipient, status string) (int64, error) {
 	publicID := utils.EncodeID(orderID)
 	label := paymentStatusLabels[status]
 	if label == "" {

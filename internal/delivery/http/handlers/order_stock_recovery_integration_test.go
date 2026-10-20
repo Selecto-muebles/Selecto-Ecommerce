@@ -89,7 +89,8 @@ func TestPaidWebhookRecoversCancelledExpiredOrder(t *testing.T) {
 	}
 
 	handler := PaymentWebhookHandler(&database.DB{Pool: pool}, &config.Config{StorefrontURL: "http://localhost:5173"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	body := fmt.Sprintf(`{"payment_id":900002,"order_id":%q,"amount":100,"status":"paid"}`, utils.EncodeID(orderID))
+	const largePaymentID int64 = 185000000000
+	body := fmt.Sprintf(`{"payment_id":%d,"order_id":%q,"amount":100,"status":"paid"}`, largePaymentID, utils.EncodeID(orderID))
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/payments/webhook", bytes.NewBufferString(body))
@@ -107,7 +108,7 @@ func TestPaidWebhookRecoversCancelledExpiredOrder(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT stock FROM products WHERE id=$1", productID).Scan(&stock); err != nil {
 		t.Fatalf("read recovered stock: %v", err)
 	}
-	if status != "paid" || paymentStatus != "paid" || paymentID != 900002 || stock != 0 {
+	if status != "paid" || paymentStatus != "paid" || paymentID != largePaymentID || stock != 0 {
 		t.Fatalf("recovered order = %s/%s/%d, stock=%d", status, paymentStatus, paymentID, stock)
 	}
 }
