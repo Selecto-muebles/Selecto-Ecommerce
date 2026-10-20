@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	_ "time/tzdata"
 
 	"Selecto-Ecommerce/internal/shared/collection"
 )
@@ -21,7 +22,16 @@ var (
 	ErrInvalidItem        = errors.New("product_id and quantity must be positive")
 	ErrItemQuantityLimit  = errors.New("quantity exceeds per-item limit")
 	ErrOrderQuantityLimit = errors.New("order quantity limit exceeded")
+	deliveryLocation      = mustDeliveryLocation()
 )
+
+func mustDeliveryLocation() *time.Location {
+	location, err := time.LoadLocation("America/Argentina/Buenos_Aires")
+	if err != nil {
+		panic("Argentina delivery timezone is unavailable: " + err.Error())
+	}
+	return location
+}
 
 type Item struct {
 	ProductID       int
@@ -78,7 +88,10 @@ func ParseRequestedDeliveryDate(value string, now time.Time) (*time.Time, error)
 	if err != nil {
 		return nil, errors.New("requested_delivery_date must use YYYY-MM-DD")
 	}
-	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	// La tienda coordina entregas en Argentina. Comparar con UTC rechaza
+	// "mañana" entre las 21:00 y las 00:00 de Buenos Aires.
+	localNow := now.In(deliveryLocation)
+	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, time.UTC)
 	if !requested.After(today) {
 		return nil, errors.New("requested_delivery_date must be after today")
 	}
