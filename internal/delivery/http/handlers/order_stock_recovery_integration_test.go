@@ -29,6 +29,12 @@ func TestPaymentWebhookContractIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	userID, productID, orderID := seedPendingOrder(t, pool, 3, 2)
 	t.Cleanup(func() { cleanupOrderFixture(ctx, pool, orderID, productID, userID) })
+	orderContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	orderContext.Request = httptest.NewRequest(http.MethodGet, "/orders/"+utils.EncodeID(orderID), nil)
+	beforePayment, err := fetchOrder(orderContext, &database.DB{Pool: pool}, orderID, "", true)
+	if err != nil || beforePayment.PaymentRecorded == nil || *beforePayment.PaymentRecorded {
+		t.Fatalf("new order payment evidence = %#v, error %v; expected no recorded payment", beforePayment, err)
+	}
 
 	handler := PaymentWebhookHandler(&database.DB{Pool: pool}, &config.Config{StorefrontURL: "http://localhost:5173"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	body := fmt.Sprintf(`{"payment_id":900001,"order_id":%q,"amount":200,"status":"paid"}`, utils.EncodeID(orderID))
@@ -55,6 +61,10 @@ func TestPaymentWebhookContractIsIdempotent(t *testing.T) {
 	}
 	if status != "paid" || paymentStatus != "paid" || paymentID != 900001 {
 		t.Fatalf("order state = %s/%s/%d, want paid/paid/900001", status, paymentStatus, paymentID)
+	}
+	afterPayment, err := fetchOrder(orderContext, &database.DB{Pool: pool}, orderID, "", true)
+	if err != nil || afterPayment.PaymentRecorded == nil || !*afterPayment.PaymentRecorded || afterPayment.PaymentStatus != "paid" {
+		t.Fatalf("paid order payment evidence = %#v, error %v", afterPayment, err)
 	}
 	var events, audits int
 	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM payment_webhook_events WHERE order_id=$1", orderID).Scan(&events); err != nil {

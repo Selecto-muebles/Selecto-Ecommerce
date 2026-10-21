@@ -1,6 +1,6 @@
 module Selecto-Ecommerce
 
-go 1.26.9
+go 1.26.10
 
 require (
 	cloud.google.com/go/cloudtasks v1.19.0

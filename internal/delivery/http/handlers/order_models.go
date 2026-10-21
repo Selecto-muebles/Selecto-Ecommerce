@@ -50,6 +50,7 @@ type OrderResponse struct {
 	UserID          int                      `json:"user_id"`
 	Status          string                   `json:"status"`
 	PaymentStatus   string                   `json:"payment_status"`
+	PaymentRecorded *bool                    `json:"payment_recorded,omitempty"`
 	Total           float64                  `json:"total"`
 	CreatedAt       time.Time                `json:"created_at"`
 	Items           []OrderItemResponse      `json:"items"`
