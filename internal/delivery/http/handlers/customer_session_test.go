@@ -73,6 +73,7 @@ func TestCustomerRefreshRotatesAndLogoutRevokes(t *testing.T) {
 			c.Request.AddCookie(cookie)
 		}
 		handler(c)
+		c.Writer.WriteHeaderNow()
 		return recorder
 	}
 
