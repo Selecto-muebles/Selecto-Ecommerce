@@ -2,7 +2,7 @@
 
 La renovación de 30 días requiere **dos repositorios y una API Config nueva**. No
 activar el frontend antes de comprobar que el Gateway expone los endpoints y
-preserva `Cookie` / `Set-Cookie`. El JWT de acceso sigue venciendo como máximo
+preserva `Cookie` / `Set-Cookie` a través del proxy `/api/` de Nginx. El JWT de acceso sigue venciendo como máximo
 a las 24 horas; la cookie HttpOnly permite renovarlo sin guardar un refresh
 token en JavaScript.
 
