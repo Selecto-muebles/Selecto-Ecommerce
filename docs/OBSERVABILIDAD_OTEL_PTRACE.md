@@ -4,7 +4,7 @@
 
 La API ya registra solicitudes con `request_id`, `correlation_id`, ruta y latencia en logs estructurados. El endpoint protegido `/admin/observability` muestra el estado de base de datos, reservas vencidas y eventos recientes del webhook. Ninguno de esos datos equivale hoy a una traza distribuida o a métricas globales de toda la plataforma.
 
-La instrumentación de producción debe basarse en OpenTelemetry. Un `trace_id` permite seguir una operación entre Ecommerce y Payments, pero nunca debe usarse para marcar una orden como pagada: la fuente de verdad sigue siendo el estado confirmado por los servicios y la base de datos.
+La instrumentación de producción debe basarse en OpenTelemetry. Esta primera etapa registra spans HTTP de Ecommerce; seguir una operación entre Ecommerce y Payments requerirá instrumentar también Payments y propagar allí el contexto. Un `trace_id` nunca debe usarse para marcar una orden como pagada: la fuente de verdad sigue siendo el estado confirmado por los servicios y la base de datos.
 
 ## Contrato de seguridad
 
