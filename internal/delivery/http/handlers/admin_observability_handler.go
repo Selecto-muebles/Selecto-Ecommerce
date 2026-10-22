@@ -8,6 +8,7 @@ import (
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
+	"Selecto-Ecommerce/internal/observability"
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,11 @@ func AdminObservabilityHandler(db *database.DB, cfg *config.Config) gin.HandlerF
 		var pendingExpired int
 		_ = db.Pool.QueryRow(c, "SELECT COUNT(*) FROM orders WHERE status='pending' AND active_payment_preference_id IS NULL AND COALESCE(expires_at, created_at + make_interval(secs => $1)) < NOW()", int(cfg.OrderPendingTTL.Seconds())).Scan(&pendingExpired)
 		webhooks, _ := adminRecentPaymentWebhookEvents(c, db)
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "database": dbStatus, "pending_expired_orders": pendingExpired, "recent_payment_webhook_events": webhooks})
+		tracingStatus := "not_configured"
+		if cfg.OTLPTracesEndpoint != "" {
+			tracingStatus = "configured"
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "database": dbStatus, "pending_expired_orders": pendingExpired, "recent_payment_webhook_events": webhooks, "tracing": gin.H{"status": tracingStatus, "sample_ratio": observability.TraceSampleRatio}})
 	}
 }
 

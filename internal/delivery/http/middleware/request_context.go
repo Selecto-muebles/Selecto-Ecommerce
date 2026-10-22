@@ -10,6 +10,7 @@ import (
 	"Selecto-Ecommerce/internal/shared/utils"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -95,7 +96,7 @@ func RequestContext(logger *slog.Logger) gin.HandlerFunc {
 			return
 		}
 
-		logger.Info(logging.EventHTTPRouteCompleted,
+		fields := []any{
 			"request_id", requestID,
 			"correlation_id", correlationID,
 			"method", c.Request.Method,
@@ -104,7 +105,11 @@ func RequestContext(logger *slog.Logger) gin.HandlerFunc {
 			"latency_ms", completedAt.Sub(start).Milliseconds(),
 			"client_ip", c.ClientIP(),
 			"suppressed_since_last", suppressed,
-		)
+		}
+		if span := trace.SpanContextFromContext(c.Request.Context()); span.IsValid() && span.IsSampled() {
+			fields = append(fields, "trace_id", span.TraceID().String(), "span_id", span.SpanID().String())
+		}
+		logger.Info(logging.EventHTTPRouteCompleted, fields...)
 	}
 }
 

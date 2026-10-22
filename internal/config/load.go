@@ -37,6 +37,7 @@ func LoadConfig() *Config {
 		ReleaseWorkerMaxBatches:   getIntEnv("RELEASE_WORKER_MAX_BATCHES", 10),
 		StorefrontURL:             strings.TrimRight(getEnv("STOREFRONT_URL", "http://localhost:5173"), "/"),
 		AdminURL:                  strings.TrimRight(getEnv("ADMIN_URL", "http://localhost:5173"), "/"),
+		OTLPTracesEndpoint:        strings.TrimSpace(getEnv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")),
 		SMTPHost:                  strings.TrimSpace(getEnv("SMTP_HOST", "")),
 		SMTPPort:                  getIntEnv("SMTP_PORT", 587),
 		SMTPUsername:              strings.TrimSpace(getEnv("SMTP_USERNAME", "")),
