@@ -45,6 +45,9 @@ func runExpiredOrders(ctx context.Context, db *database.DB, cfg *config.Config, 
 		}
 	}
 	logger.Info(logging.EventExpiredOrderReleaseCompleted, "orders_released", total)
+	if _, err := db.Pool.Exec(ctx, "DELETE FROM customer_refresh_sessions WHERE expires_at <= NOW()"); err != nil {
+		return total, err
+	}
 	return total, nil
 }
 

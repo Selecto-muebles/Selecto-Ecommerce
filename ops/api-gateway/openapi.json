@@ -14,6 +14,14 @@
     "protocol": "h2"
   },
   "paths": {
+    "/auth/session/refresh": {
+      "post": {"operationId":"RefreshCustomerSession","responses":{"200":{"description":"Nuevo token de acceso y cookie renovada"},"401":{"description":"Sesión ausente o vencida"}}},
+      "options": {"operationId":"CorsRefreshCustomerSession","responses":{"204":{"description":"Preflight"}}}
+    },
+    "/auth/session/logout": {
+      "post": {"operationId":"LogoutCustomerSession","responses":{"204":{"description":"Sesión revocada"}}},
+      "options": {"operationId":"CorsLogoutCustomerSession","responses":{"204":{"description":"Preflight"}}}
+    },
     "/payments/mercadopago/callback": {
       "get": {"operationId":"MercadoPagoMarketplaceCallback","produces":["text/html"],"parameters":[{"name":"code","in":"query","type":"string"},{"name":"state","in":"query","type":"string"}],"responses":{"303":{"description":"Redirige a un resultado sin código OAuth"}}},
       "options": {"operationId":"CorsMercadoPagoMarketplaceCallback","responses":{"204":{"description":"Preflight"}}}
