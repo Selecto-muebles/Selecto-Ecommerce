@@ -4,8 +4,10 @@ const spec = JSON.parse(
   readFileSync(new URL("../ops/api-gateway/openapi.json", import.meta.url), "utf8"),
 );
 
-const expectedPathCount = 87;
+const expectedPathCount = 89;
 const requiredMethods = new Map([
+  ["/auth/session/refresh", "post"],
+  ["/auth/session/logout", "post"],
   ["/payments/mercadopago/callback", "get"],
   ["/payments/mercadopago/resultado", "get"],
   ["/admin/marketplace/status", "get"],
