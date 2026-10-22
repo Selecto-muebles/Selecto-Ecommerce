@@ -29,8 +29,12 @@ func AdminListOrdersHandler(db *database.DB) gin.HandlerFunc {
 		q := strings.TrimSpace(c.Query("q"))
 		status := strings.TrimSpace(c.Query("status"))
 		paymentStatus := strings.TrimSpace(c.Query("payment_status"))
-		where := []string{"($1 = '' OR u.email ILIKE '%' || $1 || '%' OR COALESCE(u.dni, '') ILIKE '%' || $1 || '%' OR COALESCE(u.first_name, '') ILIKE '%' || $1 || '%' OR COALESCE(u.last_name, '') ILIKE '%' || $1 || '%')"}
-		args := []any{q}
+		searchOrderID := 0
+		if id, err := utils.DecodeID(q); err == nil {
+			searchOrderID = id
+		}
+		where := []string{"($1 = '' OR o.id=$2 OR u.email ILIKE '%' || $1 || '%' OR COALESCE(u.dni, '') ILIKE '%' || $1 || '%' OR COALESCE(u.first_name, '') ILIKE '%' || $1 || '%' OR COALESCE(u.last_name, '') ILIKE '%' || $1 || '%')"}
+		args := []any{q, searchOrderID}
 		if status != "" {
 			args = append(args, status)
 			where = append(where, fmt.Sprintf("o.status=$%d", len(args)))
@@ -117,9 +121,10 @@ func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, erro
 }
 
 func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H, error) {
-	rows, err := db.Pool.Query(ctx, `SELECT oi.id, oi.product_id, p.name, oi.quantity, oi.price,
+	rows, err := db.Pool.Query(ctx, `SELECT oi.id, oi.product_id,
+		COALESCE(NULLIF(oi.product_name_snapshot, ''), p.name, 'Producto sin nombre'), oi.quantity, oi.price,
 		COALESCE(oi.original_unit_price, oi.price), oi.discount_percent, oi.selected_options
-		FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id`, orderID)
+		FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1 ORDER BY oi.id`, orderID)
 	if err != nil {
 		return nil, err
 	}

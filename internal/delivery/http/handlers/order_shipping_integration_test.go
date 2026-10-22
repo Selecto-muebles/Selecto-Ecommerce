@@ -95,4 +95,31 @@ func TestCreateOrderUsesPerOrderShippingSnapshot(t *testing.T) {
 	if productNameSnapshot != "Shipping product" || skuSnapshot != "SEL-ORIGINAL" {
 		t.Fatalf("dispatch snapshot changed to %q/%q", productNameSnapshot, skuSnapshot)
 	}
+	adminOrder, err := adminOrderDetail(ctx, &database.DB{Pool: pool}, orderID)
+	if err != nil {
+		t.Fatalf("read historical admin order: %v", err)
+	}
+	items, ok := adminOrder["items"].([]gin.H)
+	if !ok || len(items) != 1 || items[0]["name"] != "Shipping product" {
+		t.Fatalf("admin order lost purchase-time product name: %#v", adminOrder["items"])
+	}
+	shipping, ok := adminOrder["shipping_address"].(*ShippingAddressResponse)
+	if !ok || shipping.DNI != "87654321" || shipping.StreetAddress != "Destino real" {
+		t.Fatalf("admin order lost purchase-time address: %#v", adminOrder["shipping_address"])
+	}
+	listRecorder := httptest.NewRecorder()
+	listContext, _ := gin.CreateTestContext(listRecorder)
+	listContext.Request = httptest.NewRequest(http.MethodGet, "/admin/orders?q="+utils.EncodeID(orderID), nil)
+	AdminListOrdersHandler(&database.DB{Pool: pool})(listContext)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("search order by public id: %d %s", listRecorder.Code, listRecorder.Body.String())
+	}
+	var list struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &list); err != nil || len(list.Items) != 1 || list.Items[0].ID != utils.EncodeID(orderID) {
+		t.Fatalf("public order id search did not find the purchase: %#v, %v", list.Items, err)
+	}
 }
