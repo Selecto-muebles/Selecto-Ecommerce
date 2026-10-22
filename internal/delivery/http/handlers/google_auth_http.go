@@ -202,7 +202,12 @@ func respondWithSession(c *gin.Context, db *database.DB, cfg *config.Config, log
 		apperrors.Internal(c)
 		return
 	}
+	if err := issueCustomerRefreshSession(c, db, cfg, userID, sessionVersion); err != nil {
+		apperrors.Internal(c)
+		return
+	}
 	logger.Info(logging.EventUserLoginCompleted, "user_id", userID, "role", role, "source", source)
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"token": token, "role": role})
 }
 

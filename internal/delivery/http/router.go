@@ -65,6 +65,8 @@ func SetupRouter(
 	r.POST("/admin/auth/password/reset", handlers.AdminResetPasswordHandler(db))
 	r.POST("/auth/google", handlers.GoogleAuthHandler(db, cfg, logger, nil))
 	r.POST("/auth/google/register", handlers.GoogleRegisterHandler(db, cfg, logger))
+	r.POST("/auth/session/refresh", handlers.RefreshCustomerSessionHandler(db, cfg))
+	r.POST("/auth/session/logout", handlers.LogoutCustomerSessionHandler(db, cfg))
 	r.GET("/products", handlers.GetProductsHandler(db, logger))
 	r.GET("/categories", handlers.ListCategoriesHandler(db, true))
 	r.GET("/product-images/:id", handlers.ProductImageHandler(db))
@@ -179,15 +181,15 @@ func SetupRouter(
 
 func corsConfig(cfg *config.Config) cors.Config {
 	corsCfg := cors.Config{
-		AllowOrigins:  cfg.CORSAllowedOrigins,
-		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:  []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Correlation-ID", "X-Service-Name", "X-Service-Timestamp", "X-Service-Signature", "Idempotency-Key", "X-Selecto-Signature", "X-Selecto-Timestamp", "X-Destry-Signature", "X-Destry-Timestamp"},
-		ExposeHeaders: []string{"X-Request-ID", "X-Correlation-ID"},
+		AllowOrigins:     cfg.CORSAllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Correlation-ID", "X-Service-Name", "X-Service-Timestamp", "X-Service-Signature", "Idempotency-Key", "X-Selecto-Signature", "X-Selecto-Timestamp", "X-Destry-Signature", "X-Destry-Timestamp"},
+		ExposeHeaders:    []string{"X-Request-ID", "X-Correlation-ID"},
+		AllowCredentials: true,
 	}
 
 	if cfg.AppEnv != "production" {
-		corsCfg.AllowOrigins = nil
-		corsCfg.AllowAllOrigins = true
+		corsCfg.AllowOrigins = cfg.CORSAllowedOrigins
 	}
 
 	return corsCfg

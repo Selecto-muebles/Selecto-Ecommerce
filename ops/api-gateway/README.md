@@ -1,6 +1,6 @@
 # API Gateway de Ecommerce durante el corte a Selecto
 
-`openapi.json` contiene las 81 rutas vigentes de Ecommerce, incluidas categorías,
+`openapi.json` contiene las 89 rutas vigentes de Ecommerce, incluidas categorías,
 contenido editorial, reseñas, recuperación de acceso administrativo, términos
 públicos, arrepentimiento, edición versionada de artículos legales y cuatro
 consultas administrativas de solo lectura para preparar la operación con Gestionar. Mantiene
@@ -43,7 +43,7 @@ gcloud api-gateway gateways update destry-ecommerce-staging-gw \
 ```
 
 Antes de actualizar se debe capturar el ID activo para rollback y comprobar que
-la configuración compilada conserva las 81 rutas esperadas. Después se prueban
+la configuración compilada conserva las 89 rutas esperadas. Después se prueban
 `/health`, catálogo, autenticación, CORS, recuperación administrativa,
 eliminación protegida de productos, newsletter, comunicaciones y detalle
 multiproveedor del Backoffice. También se comprueba que

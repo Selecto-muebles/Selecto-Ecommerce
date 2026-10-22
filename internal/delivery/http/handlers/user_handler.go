@@ -250,8 +250,15 @@ func LoginHandler(db *database.DB, cfg *config.Config, logger *slog.Logger) gin.
 			apperrors.Internal(c)
 			return
 		}
+		if role == "user" {
+			if err := issueCustomerRefreshSession(c, db, cfg, userID, sessionVersion); err != nil {
+				apperrors.Internal(c)
+				return
+			}
+		}
 
 		logger.Info(logging.EventUserLoginCompleted, "user_id", userID, "role", role)
+		c.Header("Cache-Control", "no-store")
 		c.JSON(http.StatusOK, gin.H{
 			"token": token,
 			"role":  role,

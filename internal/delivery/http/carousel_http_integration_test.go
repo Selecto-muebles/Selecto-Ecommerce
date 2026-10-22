@@ -43,7 +43,7 @@ func TestAuthenticatedCategoryProductAndCarouselHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Exec(ctx, "DELETE FROM users WHERE email=$1", email)
-	cfg := &config.Config{JWTSecret: "isolated-test-secret-not-production", JWTTTL: time.Hour, RateLimitPerMinute: 1000}
+	cfg := &config.Config{JWTSecret: "isolated-test-secret-not-production", JWTTTL: time.Hour, RateLimitPerMinute: 1000, CORSAllowedOrigins: []string{"http://localhost:3000"}}
 	router := SetupRouter(&database.DB{Pool: pool}, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	token := ""
 	request := func(method, path, contentType string, body []byte, want int) *httptest.ResponseRecorder {
