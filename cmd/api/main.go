@@ -15,6 +15,7 @@ import (
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	"Selecto-Ecommerce/internal/jobs"
+	"Selecto-Ecommerce/internal/observability"
 	"Selecto-Ecommerce/internal/shared/logging"
 )
 
@@ -93,6 +94,18 @@ func main() {
 		logger.Info("serverless_job_completed", "job", jobName)
 		return
 	}
+	shutdownTracing, err := observability.InitTracing(appCtx, cfg.OTLPTracesEndpoint, cfg.AppEnv)
+	if err != nil {
+		logger.Error("tracing_configuration_invalid", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(shutdownCtx); err != nil {
+			logger.Warn("tracing_shutdown_failed", "error", err)
+		}
+	}()
 	if emailTaskWorker {
 		worker := newEmailWorker(db, cfg, logger)
 		marketingWorker := newMarketingWorker(db, cfg, logger)

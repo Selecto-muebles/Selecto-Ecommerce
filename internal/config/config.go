@@ -31,6 +31,7 @@ type Config struct {
 	ReleaseWorkerMaxBatches   int
 	StorefrontURL             string
 	AdminURL                  string
+	OTLPTracesEndpoint        string
 	SMTPHost                  string
 	SMTPPort                  int
 	SMTPUsername              string

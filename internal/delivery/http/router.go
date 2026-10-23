@@ -32,6 +32,9 @@ func SetupRouter(
 	r := gin.New()
 	r.Use(gin.Recovery())
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
+	if cfg.OTLPTracesEndpoint != "" {
+		r.Use(middleware.TraceRequests())
+	}
 	r.Use(middleware.RequestContext(logger))
 	r.Use(middleware.SecurityHeaders(cfg.AppEnv))
 	r.Use(middleware.RequestBodyLimit(1 << 20))
