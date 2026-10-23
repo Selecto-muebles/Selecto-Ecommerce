@@ -3,7 +3,7 @@ module Selecto-Ecommerce
 go 1.26.10
 
 require (
-	cloud.google.com/go/cloudtasks v1.19.0
+	cloud.google.com/go/cloudtasks v1.20.0
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -14,14 +14,16 @@ require (
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
 	golang.org/x/crypto v0.57.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 )
 
 require (
+	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.11.0 // indirect
+	cloud.google.com/go/longrunning v1.2.0 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
