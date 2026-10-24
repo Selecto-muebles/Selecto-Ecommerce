@@ -149,6 +149,7 @@ func SetupRouter(
 		cfg, gestionar.NewClient(cfg.GestionarAPIBaseURL, cfg.GestionarSecretToken, nil),
 	))
 	admin.GET("/admin/integrations/gestionar/dispatches", handlers.AdminGestionarDispatchesHandler(db))
+	admin.GET("/admin/integrations/gestionar/dispatches/export", handlers.AdminGestionarDispatchExportHandler(db))
 	admin.GET("/admin/integrations/gestionar/dispatches/:id/preview", handlers.AdminGestionarDispatchPreviewHandler(db))
 	admin.GET("/admin/customers", handlers.AdminListCustomersHandler(db))
 	admin.GET("/admin/customers/:id", handlers.AdminGetCustomerHandler(db))

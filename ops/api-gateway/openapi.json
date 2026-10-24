@@ -539,6 +539,20 @@
         "responses": {"204": {"description": "Preflight CORS"}}
       }
     },
+    "/admin/integrations/gestionar/dispatches/export": {
+      "get": {
+        "operationId": "AdminGestionarDispatchExport",
+        "responses": {
+          "200": {"description": "CSV de pedidos pagados pendientes de despacho; no se envía al proveedor"},
+          "401": {"description": "Se requiere autenticación administrativa"},
+          "413": {"description": "La exportación supera el límite de líneas"}
+        }
+      },
+      "options": {
+        "operationId": "CorsAdminGestionarDispatchExport",
+        "responses": {"204": {"description": "Preflight CORS"}}
+      }
+    },
     "/admin/integrations/gestionar/dispatches/{id}/preview": {
       "get": {
         "operationId": "AdminGestionarDispatchPreview",
