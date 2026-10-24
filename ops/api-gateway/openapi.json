@@ -526,6 +526,28 @@
         }
       }
     },
+    "/admin/dispatch/batches": {
+      "get": {
+        "operationId": "AdminDispatchBatches",
+        "responses": {"200": {"description": "Tandas de despacho preparadas"}, "401": {"description": "Autenticación administrativa requerida"}}
+      },
+      "options": {"operationId": "CorsAdminDispatchBatches", "responses": {"204": {"description": "Preflight CORS"}}}
+    },
+    "/admin/dispatch/batches/prepare": {
+      "post": {
+        "operationId": "AdminPrepareDispatchBatches",
+        "responses": {"200": {"description": "Preparación idempotente de tandas vencidas"}, "401": {"description": "Autenticación administrativa requerida"}}
+      },
+      "options": {"operationId": "CorsAdminPrepareDispatchBatches", "responses": {"204": {"description": "Preflight CORS"}}}
+    },
+    "/admin/dispatch/batches/{id}/csv": {
+      "get": {
+        "operationId": "AdminDispatchBatchCSV",
+        "parameters": [{"name": "id", "in": "path", "required": true, "type": "string"}],
+        "responses": {"200": {"description": "CSV de una tanda cerrada"}, "401": {"description": "Autenticación administrativa requerida"}, "404": {"description": "Tanda inexistente"}}
+      },
+      "options": {"operationId": "CorsAdminDispatchBatchCSV", "parameters": [{"name": "id", "in": "path", "required": true, "type": "string"}], "responses": {"204": {"description": "Preflight CORS"}}}
+    },
     "/admin/integrations/gestionar/dispatches": {
       "get": {
         "operationId": "AdminGestionarDispatches",

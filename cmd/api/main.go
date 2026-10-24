@@ -160,10 +160,10 @@ func parseCommand(args []string) (string, bool, error) {
 	if len(args) == 0 {
 		return "", false, nil
 	}
-	if len(args) == 2 && args[0] == "job" && (args[1] == jobs.ExpireOrders || args[1] == jobs.EmailOutbox) {
+	if len(args) == 2 && args[0] == "job" && (args[1] == jobs.ExpireOrders || args[1] == jobs.EmailOutbox || args[1] == jobs.DispatchBatches) {
 		return args[1], true, nil
 	}
-	return "", false, fmt.Errorf("usage: selecto-ecommerce [database migrate|database audit|job expire-orders|job email-outbox|serve email-outbox]")
+	return "", false, fmt.Errorf("usage: selecto-ecommerce [database migrate|database audit|job expire-orders|job email-outbox|job dispatch-batches|serve email-outbox]")
 }
 
 func isEmailTaskWorkerCommand(args []string) bool {

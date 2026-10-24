@@ -15,6 +15,7 @@ import (
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	postgresrepo "Selecto-Ecommerce/internal/repository/postgres"
 	adminservice "Selecto-Ecommerce/internal/service/admin"
+	shippingservice "Selecto-Ecommerce/internal/service/shipping"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"Selecto-Ecommerce/internal/shared/logging"
 	"Selecto-Ecommerce/internal/shared/utils"
@@ -78,13 +79,13 @@ func AdminListOrdersHandler(db *database.DB) gin.HandlerFunc {
 	}
 }
 
-func AdminGetOrderHandler(db *database.DB) gin.HandlerFunc {
+func AdminGetOrderHandler(db *database.DB, cutoffHours ...int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := adminIDParam(c, "id")
 		if !ok {
 			return
 		}
-		order, err := adminOrderDetail(c, db, id)
+		order, err := adminOrderDetail(c, db, id, cutoffHours...)
 		if err != nil {
 			handleAdminLookupErr(c, err, "order not found")
 			return
@@ -93,7 +94,7 @@ func AdminGetOrderHandler(db *database.DB) gin.HandlerFunc {
 	}
 }
 
-func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, error) {
+func adminOrderDetail(ctx context.Context, db *database.DB, id int, cutoffHours ...int) (gin.H, error) {
 	var userID int
 	var status, paymentStatus, paymentProvider, providerPaymentID, preferenceID, checkoutURL, environment string
 	var total float64
@@ -117,7 +118,25 @@ func adminOrderDetail(ctx context.Context, db *database.DB, id int) (gin.H, erro
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": total, "created_at": createdAt, "expires_at": nullableTime(expiresAt), "paid_at": nullableTime(paidAt), "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "payment_provider": paymentProvider, "provider_payment_id": providerPaymentID, "active_payment_preference_id": preferenceID, "active_checkout_url": checkoutURL, "active_payment_environment": environment, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName, "dni": dni, "street_address": streetAddress, "street_number": streetNumber, "postal_code": postalCode, "province": province, "locality": locality, "phone_number": phone}, "shipping_address": shippingAddress, "shipment": shipment, "items": items, "audit_logs": audit}, nil
+	var cutoff any
+	if status == "paid" && paidAt.Valid {
+		hour := shippingservice.DefaultDispatchCutoffHour
+		if len(cutoffHours) > 0 {
+			hour = cutoffHours[0]
+		}
+		cutoff, err = shippingservice.DispatchCutoff(paidAt.Time, hour)
+		if err != nil {
+			return nil, err
+		}
+		var assignedCutoff time.Time
+		batchErr := db.Pool.QueryRow(ctx, `SELECT b.cutoff_at FROM dispatch_cutoff_batch_orders bo JOIN dispatch_cutoff_batches b ON b.id=bo.batch_id WHERE bo.order_id=$1`, id).Scan(&assignedCutoff)
+		if batchErr == nil {
+			cutoff = assignedCutoff
+		} else if batchErr != pgx.ErrNoRows {
+			return nil, batchErr
+		}
+	}
+	return gin.H{"id": utils.EncodeID(id), "status": status, "payment_status": paymentStatus, "total": total, "created_at": createdAt, "expires_at": nullableTime(expiresAt), "paid_at": nullableTime(paidAt), "dispatch_cutoff_at": cutoff, "cancelled_at": nullableTime(cancelledAt), "payment_id": nullableInt(paymentID), "payment_provider": paymentProvider, "provider_payment_id": providerPaymentID, "active_payment_preference_id": preferenceID, "active_checkout_url": checkoutURL, "active_payment_environment": environment, "customer": gin.H{"id": utils.EncodeID(userID), "email": email, "first_name": firstName, "last_name": lastName, "dni": dni, "street_address": streetAddress, "street_number": streetNumber, "postal_code": postalCode, "province": province, "locality": locality, "phone_number": phone}, "shipping_address": shippingAddress, "shipment": shipment, "items": items, "audit_logs": audit}, nil
 }
 
 func adminOrderItems(ctx context.Context, db *database.DB, orderID int) ([]gin.H, error) {
