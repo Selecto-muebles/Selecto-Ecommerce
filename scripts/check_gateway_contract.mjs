@@ -4,7 +4,7 @@ const spec = JSON.parse(
   readFileSync(new URL("../ops/api-gateway/openapi.json", import.meta.url), "utf8"),
 );
 
-const expectedPathCount = 90;
+const expectedPathCount = 93;
 const requiredMethods = new Map([
   ["/auth/session/refresh", "post"],
   ["/auth/session/logout", "post"],
@@ -48,6 +48,9 @@ const requiredMethods = new Map([
   ["/admin/integrations/gestionar/dispatches", "get"],
   ["/admin/integrations/gestionar/dispatches/export", "get"],
   ["/admin/integrations/gestionar/dispatches/{id}/preview", "get"],
+  ["/admin/dispatch/batches", "get"],
+  ["/admin/dispatch/batches/prepare", "post"],
+  ["/admin/dispatch/batches/{id}/csv", "get"],
 ]);
 
 const errors = [];

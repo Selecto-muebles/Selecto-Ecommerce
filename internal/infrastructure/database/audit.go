@@ -38,6 +38,8 @@ var requiredCommerceColumns = map[string][]string{
 	"gestionar_pickup_batches":     {"id", "request_key", "pickup_time_id", "state", "external_pickup_id", "attempted_at", "confirmed_at", "last_error_code", "created_at", "updated_at"},
 	"gestionar_pickup_orders":      {"batch_id", "order_id"},
 	"gestionar_status_events":      {"id", "order_id", "event_key", "external_status", "occurred_at", "received_at"},
+	"dispatch_cutoff_batches":      {"id", "cutoff_at", "sealed_at", "created_at"},
+	"dispatch_cutoff_batch_orders": {"batch_id", "order_id", "email_snapshot", "shipment_status_snapshot"},
 	"account_tokens":               {"id", "user_id", "purpose", "token_hash", "expires_at", "consumed_at", "created_at"},
 	"email_outbox":                 {"id", "event_key", "recipient", "template", "payload", "status", "attempts", "next_attempt_at", "locked_at", "sent_at", "last_error", "created_at", "updated_at"},
 	"marketing_subscriptions":      {"id", "email", "status", "source", "consent_at", "unsubscribed_at", "created_at", "updated_at"},
@@ -62,6 +64,7 @@ var requiredCommerceIndexes = []string{
 	"idx_product_reviews_public_pinned",
 	"idx_gestionar_dispatches_state",
 	"idx_gestionar_status_events_order",
+	"idx_dispatch_cutoff_batch_orders_batch",
 }
 
 var requiredCommerceConstraints = []string{

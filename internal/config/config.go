@@ -8,56 +8,58 @@ import (
 )
 
 type Config struct {
-	Port                      string
-	AppEnv                    string
-	DatabaseURL               string
-	DatabaseSchema            string
-	PaymentsServiceURL        string
-	PaymentsIDTokenAudience   string
-	JWTSecret                 string
-	JWTTTL                    time.Duration
-	GoogleClientID            string
-	InternalWebhookSecret     string
-	CORSAllowedOrigins        []string
-	RateLimitPerMinute        int
-	OrderPendingTTL           time.Duration
-	ReleaseWorkerInterval     time.Duration
-	PaymentsRequestTimeout    time.Duration
-	DatabaseMaxConns          int
-	DatabaseMinConns          int
-	DatabaseMaxConnLifetime   time.Duration
-	DatabaseMaxConnIdleTime   time.Duration
-	ReleaseWorkerBatchSize    int
-	ReleaseWorkerMaxBatches   int
-	StorefrontURL             string
-	AdminURL                  string
-	OTLPTracesEndpoint        string
-	SMTPHost                  string
-	SMTPPort                  int
-	SMTPUsername              string
-	SMTPPassword              string
-	SMTPFrom                  string
-	SMTPTLSMode               string
-	BrevoContactsEnabled      bool
-	BrevoAPIKey               string
-	BrevoListID               int
-	BrevoAPIBaseURL           string
-	BrevoWebhookToken         string
-	GestionarAPIBaseURL       string
-	GestionarSecretToken      string
-	MarketingWorkerBatchSize  int
-	EmailWorkerInterval       time.Duration
-	EmailWorkerBatchSize      int
-	EmbeddedWorkers           bool
-	JobTimeout                time.Duration
-	EmailTasksEnabled         bool
-	EmailTasksProject         string
-	EmailTasksLocation        string
-	EmailTasksQueue           string
-	EmailTasksWorkerURL       string
-	EmailTasksServiceAccount  string
-	EmailTasksAudience        string
-	EmailTasksDispatchTimeout time.Duration
+	Port                       string
+	AppEnv                     string
+	DatabaseURL                string
+	DatabaseSchema             string
+	PaymentsServiceURL         string
+	PaymentsIDTokenAudience    string
+	JWTSecret                  string
+	JWTTTL                     time.Duration
+	GoogleClientID             string
+	InternalWebhookSecret      string
+	CORSAllowedOrigins         []string
+	RateLimitPerMinute         int
+	OrderPendingTTL            time.Duration
+	ReleaseWorkerInterval      time.Duration
+	PaymentsRequestTimeout     time.Duration
+	DatabaseMaxConns           int
+	DatabaseMinConns           int
+	DatabaseMaxConnLifetime    time.Duration
+	DatabaseMaxConnIdleTime    time.Duration
+	ReleaseWorkerBatchSize     int
+	ReleaseWorkerMaxBatches    int
+	StorefrontURL              string
+	AdminURL                   string
+	OTLPTracesEndpoint         string
+	SMTPHost                   string
+	SMTPPort                   int
+	SMTPUsername               string
+	SMTPPassword               string
+	SMTPFrom                   string
+	SMTPTLSMode                string
+	BrevoContactsEnabled       bool
+	BrevoAPIKey                string
+	BrevoListID                int
+	BrevoAPIBaseURL            string
+	BrevoWebhookToken          string
+	GestionarAPIBaseURL        string
+	GestionarSecretToken       string
+	DispatchCutoffHour         int
+	GestionarWhatsAppRecipient string
+	MarketingWorkerBatchSize   int
+	EmailWorkerInterval        time.Duration
+	EmailWorkerBatchSize       int
+	EmbeddedWorkers            bool
+	JobTimeout                 time.Duration
+	EmailTasksEnabled          bool
+	EmailTasksProject          string
+	EmailTasksLocation         string
+	EmailTasksQueue            string
+	EmailTasksWorkerURL        string
+	EmailTasksServiceAccount   string
+	EmailTasksAudience         string
+	EmailTasksDispatchTimeout  time.Duration
 }
 
 func (c *Config) Validate() error {
@@ -113,6 +115,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.validateGestionar(); err != nil {
+		return err
+	}
+	if err := c.validateDispatch(); err != nil {
 		return err
 	}
 	if isCloudRunURL(c.PaymentsServiceURL) && c.PaymentsIDTokenAudience == "" {
@@ -176,6 +181,10 @@ func (c *Config) ValidateJob(name string) error {
 			return err
 		}
 		if err := c.validateBrevo(); err != nil {
+			return err
+		}
+	case "dispatch-batches":
+		if err := c.validateDispatch(); err != nil {
 			return err
 		}
 	default:

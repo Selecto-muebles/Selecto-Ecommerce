@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	ExpireOrders = "expire-orders"
-	EmailOutbox  = "email-outbox"
+	ExpireOrders    = "expire-orders"
+	EmailOutbox     = "email-outbox"
+	DispatchBatches = "dispatch-batches"
 )
 
 func Run(ctx context.Context, name string, db *database.DB, cfg *config.Config, logger *slog.Logger) error {
@@ -25,6 +27,12 @@ func Run(ctx context.Context, name string, db *database.DB, cfg *config.Config, 
 		return err
 	case EmailOutbox:
 		_, err := runEmailOutbox(ctx, db, cfg, logger)
+		return err
+	case DispatchBatches:
+		count, err := (postgresrepo.DispatchBatchStore{Pool: db.Pool}).PrepareDueBatches(ctx, time.Now(), cfg.DispatchCutoffHour)
+		if err == nil {
+			logger.Info("dispatch_batches_prepared", "orders_assigned", count)
+		}
 		return err
 	default:
 		return configError(name)

@@ -13,6 +13,7 @@ func TestParseCommand(t *testing.T) {
 		{name: "api", args: nil},
 		{name: "expire", args: []string{"job", "expire-orders"}, job: "expire-orders", jobMode: true},
 		{name: "email", args: []string{"job", "email-outbox"}, job: "email-outbox", jobMode: true},
+		{name: "dispatch", args: []string{"job", "dispatch-batches"}, job: "dispatch-batches", jobMode: true},
 		{name: "email task worker", args: []string{"serve", "email-outbox"}},
 		{name: "unknown", args: []string{"job", "unknown"}, wantErr: true},
 	}

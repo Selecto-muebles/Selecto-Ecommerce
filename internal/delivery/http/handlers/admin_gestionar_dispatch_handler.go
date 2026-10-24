@@ -18,8 +18,12 @@ import (
 
 // The dispatch queue is a local-data review surface, not a provider submission.
 // No endpoint in this file contacts Gestionar or changes an order's shipment.
-func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
+func AdminGestionarDispatchesHandler(db *database.DB, cutoffHours ...int) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		cutoffHour := shippingservice.DefaultDispatchCutoffHour
+		if len(cutoffHours) > 0 {
+			cutoffHour = cutoffHours[0]
+		}
 		page := adminPagination(c)
 		const where = `o.status='paid' AND (s.id IS NULL OR s.status IN ('preparing','ready_for_dispatch'))`
 		var total int
@@ -35,13 +39,15 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 				(SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id),
 				(SELECT COUNT(*) FROM order_items oi
 				 WHERE oi.order_id=o.id AND BTRIM(oi.sku_snapshot)=''),
-				COALESCE(gd.package_state,'not_started'), COALESCE(gpb.state,'not_started')
+				COALESCE(gd.package_state,'not_started'), COALESCE(gpb.state,'not_started'), b.cutoff_at
 			FROM orders o JOIN users u ON u.id=o.user_id
 			LEFT JOIN order_shipping_addresses a ON a.order_id=o.id
 			LEFT JOIN shipments s ON s.order_id=o.id
 			LEFT JOIN gestionar_dispatches gd ON gd.order_id=o.id
 			LEFT JOIN gestionar_pickup_orders gpo ON gpo.order_id=o.id
 			LEFT JOIN gestionar_pickup_batches gpb ON gpb.id=gpo.batch_id
+			LEFT JOIN dispatch_cutoff_batch_orders bo ON bo.order_id=o.id
+			LEFT JOIN dispatch_cutoff_batches b ON b.id=bo.batch_id
 			WHERE `+where+`
 			ORDER BY o.paid_at DESC NULLS LAST, o.id DESC LIMIT $1 OFFSET $2`, page.PageSize, page.Offset)
 		if err != nil {
@@ -53,20 +59,32 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 		for rows.Next() {
 			var id int
 			var paidAt sql.NullTime
+			var assignedCutoff sql.NullTime
 			var readiness shippingservice.GestionarReadiness
 			var firstName, lastName, packageState, pickupState string
 			if err := rows.Scan(&id, &readiness.OrderStatus, &readiness.ShipmentStatus, &paidAt,
 				&readiness.HasAddress, &firstName, &lastName, &readiness.Street, &readiness.StreetNumber,
 				&readiness.Locality, &readiness.Province, &readiness.PostalCode, &readiness.Phone,
 				&readiness.Email, &readiness.ItemCount, &readiness.MissingSKUs,
-				&packageState, &pickupState); err != nil {
+				&packageState, &pickupState, &assignedCutoff); err != nil {
 				apperrors.Internal(c)
 				return
 			}
 			readiness.RecipientName = strings.TrimSpace(firstName + " " + lastName)
 			blockers := readiness.Blockers()
+			var cutoff any
+			if paidAt.Valid {
+				cutoff, err = shippingservice.DispatchCutoff(paidAt.Time, cutoffHour)
+				if err != nil {
+					apperrors.Internal(c)
+					return
+				}
+			}
+			if assignedCutoff.Valid {
+				cutoff = assignedCutoff.Time
+			}
 			items = append(items, gin.H{
-				"order_id": utils.EncodeID(id), "paid_at": nullableTime(paidAt),
+				"order_id": utils.EncodeID(id), "paid_at": nullableTime(paidAt), "cutoff_at": cutoff,
 				"shipment_status": readiness.ShipmentStatus, "recipient_name": readiness.RecipientName,
 				"locality": readiness.Locality, "postal_code": readiness.PostalCode,
 				"data_ready": len(blockers) == 0, "blockers": blockers,
@@ -84,8 +102,12 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 	}
 }
 
-func AdminGestionarDispatchPreviewHandler(db *database.DB) gin.HandlerFunc {
+func AdminGestionarDispatchPreviewHandler(db *database.DB, cutoffHours ...int) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		cutoffHour := shippingservice.DefaultDispatchCutoffHour
+		if len(cutoffHours) > 0 {
+			cutoffHour = cutoffHours[0]
+		}
 		orderID, ok := adminIDParam(c, "id")
 		if !ok {
 			return
@@ -159,6 +181,14 @@ func AdminGestionarDispatchPreviewHandler(db *database.DB) gin.HandlerFunc {
 			}
 		}
 		blockers := readiness.Blockers()
+		var cutoff any
+		if paidAt.Valid {
+			cutoff, err = shippingservice.DispatchCutoff(paidAt.Time, cutoffHour)
+			if err != nil {
+				apperrors.Internal(c)
+				return
+			}
+		}
 		providerProgress, err := gestionarProviderProgress(c, db, orderID)
 		if err != nil {
 			apperrors.Internal(c)
@@ -166,7 +196,7 @@ func AdminGestionarDispatchPreviewHandler(db *database.DB) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"order": gin.H{"reference": utils.EncodeID(orderID), "status": status,
-				"paid_at": nullableTime(paidAt), "total_ars": totalARS},
+				"paid_at": nullableTime(paidAt), "total_ars": totalARS, "cutoff_at": cutoff},
 			"shipment_status": readiness.ShipmentStatus, "destination": destination,
 			"items": items, "data_ready": len(blockers) == 0, "blockers": blockers,
 			"provider_progress":   providerProgress,
