@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -85,6 +86,22 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 	if queueRecorder.Code != http.StatusOK || !strings.Contains(queueRecorder.Body.String(), utils.EncodeID(orderID)) {
 		t.Fatalf("queue status=%d body=%s", queueRecorder.Code, queueRecorder.Body.String())
 	}
+	exportRecorder := httptest.NewRecorder()
+	exportContext, _ := gin.CreateTestContext(exportRecorder)
+	exportContext.Request = httptest.NewRequest(http.MethodGet, "/admin/integrations/gestionar/dispatches/export", nil)
+	AdminGestionarDispatchExportHandler(db)(exportContext)
+	if exportRecorder.Code != http.StatusOK || !strings.Contains(exportRecorder.Header().Get("Content-Type"), "text/csv") ||
+		!strings.Contains(exportRecorder.Body.String(), utils.EncodeID(orderID)) ||
+		!strings.Contains(exportRecorder.Body.String(), "Destino Real") ||
+		!strings.Contains(exportRecorder.Body.String(), "12345678") ||
+		!strings.Contains(exportRecorder.Body.String(), "SEL-TEST-001") ||
+		strings.Contains(exportRecorder.Body.String(), "Dirección de perfil") {
+		t.Fatalf("unexpected dispatch export status=%d body=%s", exportRecorder.Code, exportRecorder.Body.String())
+	}
+	records, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(exportRecorder.Body.String(), "\ufeff"))).ReadAll()
+	if err != nil || len(records) < 2 || len(records[0]) != len(records[1]) {
+		t.Fatalf("invalid dispatch CSV: %v", err)
+	}
 
 	if _, err := pool.Exec(ctx, `UPDATE products SET name='Nombre cambiado', sku=NULL WHERE id=$1`, productID); err != nil {
 		t.Fatalf("change catalog after purchase: %v", err)
@@ -117,6 +134,13 @@ func TestGestionarDispatchPreviewUsesPaidOrderSnapshotAndNeverSends(t *testing.T
 		(order_id,submission_key,package_state,external_package_id,attempted_at,confirmed_at)
 		VALUES($1,'test-package-progress','confirmed','test-external-package',NOW(),NOW())`, orderID); err != nil {
 		t.Fatalf("seed package progress: %v", err)
+	}
+	exportRecorder = httptest.NewRecorder()
+	exportContext, _ = gin.CreateTestContext(exportRecorder)
+	exportContext.Request = httptest.NewRequest(http.MethodGet, "/admin/integrations/gestionar/dispatches/export", nil)
+	AdminGestionarDispatchExportHandler(db)(exportContext)
+	if exportRecorder.Code != http.StatusOK || strings.Contains(exportRecorder.Body.String(), utils.EncodeID(orderID)) {
+		t.Fatalf("confirmed package must not be exported again: status=%d body=%s", exportRecorder.Code, exportRecorder.Body.String())
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO gestionar_pickup_orders(batch_id,order_id)
 		VALUES($1,$2)`, pickupBatchID, orderID); err != nil {

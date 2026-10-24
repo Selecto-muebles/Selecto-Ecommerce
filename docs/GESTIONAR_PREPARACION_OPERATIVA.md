@@ -2,6 +2,18 @@
 
 ## Qué queda listo sin acceso al proveedor
 
+- Admin puede descargar un CSV de pedidos pagados pendientes de despacho con
+  una fila por artículo, cantidades, DNI, contacto y domicilio congelado en la
+  orden. Es un respaldo operativo manual: descargar no envía datos, no cambia
+  estados y no confirma que Gestionar haya aceptado un paquete. Se excluyen
+  paquetes con intento reservado/en curso/incierto o ya confirmado para evitar
+  un segundo envío accidental; los rechazados pueden gestionarse manualmente.
+  Filas incompletas llevan `REVISAR DATOS`. Más de 10.000 líneas produce un
+  error explícito en lugar de entregar un archivo incompleto.
+- El CSV contiene información personal. Sólo un administrador autenticado debe
+  descargarlo, almacenarlo temporalmente y entregarlo por un canal seguro al
+  personal logístico autorizado. No publicarlo en repositorios ni adjuntarlo a
+  tickets. Los campos se protegen contra fórmulas al abrirlos en hojas de cálculo.
 - El backoffice puede consultar órdenes **pagadas** que aún están en `preparing` o
   `ready_for_dispatch`. Incluye órdenes atrasadas; no se limita al día actual.
 - La vista previa usa `order_shipping_addresses`, la dirección congelada en la
@@ -40,6 +52,10 @@
   `Gestionar External Api` no convierte `localhost` o `{{base_url}}` en sandbox.
 - No usar el token publicado en ejemplos para pruebas ni considerarlo secreto
   de producción. Sin URL real y contrato confirmado no hay prueba externa.
+- Las capturas de Postman muestran `localhost:8000`: esa dirección es del equipo
+  del proveedor, no un endpoint accesible por Selecto. También muestran un
+  `secret-token-key` en claro. Si ese token es real debe rotarse; nunca copiarlo
+  a código, ejemplos internos o CI.
 - La migración 022 y su auditoría se probaron en PostgreSQL aislado; el schema
   de producción requiere la activación manual habitual. El gateway también
   necesita una API Config nueva: desplegar Cloud Run no habilita sus rutas.
