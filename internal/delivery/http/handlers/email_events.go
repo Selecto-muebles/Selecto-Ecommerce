@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"Selecto-Ecommerce/internal/config"
@@ -32,18 +33,40 @@ func enqueuePaymentStatusEmail(ctx context.Context, db mailinfra.QueryRower, cfg
 		"order_id": publicID, "status_label": label, "url": cfg.StorefrontURL + "/cuenta/ordenes/" + publicID,
 	}
 	if status == "paid" {
-		var total money.Cents
-		if err := db.QueryRow(ctx, "SELECT ROUND(total * 100)::BIGINT FROM orders WHERE id=$1", orderID).Scan(&total); err != nil {
+		var receipt mailinfra.PurchaseReceipt
+		if err := db.QueryRow(ctx, `SELECT ROUND(total * 100)::BIGINT,
+			TO_CHAR(paid_at AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM/YYYY HH24:MI'),
+			COALESCE(NULLIF(provider_payment_id,''), payment_id::TEXT, '')
+			FROM orders WHERE id=$1 AND status='paid'`, orderID).
+			Scan(&receipt.TotalCents, &receipt.PaidAt, &receipt.PaymentReference); err != nil {
 			return 0, err
 		}
-		payload["total"] = fmt.Sprintf("$ %.2f", total.Float64())
-		var itemsSummary string
-		if err := db.QueryRow(ctx, `SELECT COALESCE(STRING_AGG(oi.quantity::TEXT || ' × ' ||
-			COALESCE(NULLIF(oi.product_name_snapshot,''),p.name,'Producto'), E'\n' ORDER BY oi.id),'')
-			FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1`, orderID).Scan(&itemsSummary); err != nil {
+		payload["total"] = fmt.Sprintf("$ %.2f", money.Cents(receipt.TotalCents).Float64())
+		var itemsJSON string
+		if err := db.QueryRow(ctx, `SELECT COALESCE(JSONB_AGG(JSONB_BUILD_OBJECT(
+			'name',COALESCE(NULLIF(oi.product_name_snapshot,''),p.name,'Producto'),
+			'quantity',oi.quantity,
+			'unit_price_cents',ROUND(oi.price * 100)::BIGINT,
+			'original_unit_price_cents',ROUND(COALESCE(oi.original_unit_price,oi.price) * 100)::BIGINT,
+			'line_total_cents',ROUND(oi.price * oi.quantity * 100)::BIGINT,
+			'selected_options',oi.selected_options
+			) ORDER BY oi.id),'[]'::JSONB)::TEXT
+			FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1`, orderID).Scan(&itemsJSON); err != nil {
 			return 0, err
 		}
-		payload["items_summary"] = itemsSummary
+		if err := json.Unmarshal([]byte(itemsJSON), &receipt.Lines); err != nil {
+			return 0, err
+		}
+		var finalLines, originalLines int64
+		for _, item := range receipt.Lines {
+			finalLines += item.LineTotalCents
+			originalLines += item.OriginalUnitPriceCents * int64(item.Quantity)
+		}
+		if len(receipt.Lines) > 0 && finalLines == receipt.TotalCents && originalLines >= receipt.TotalCents {
+			receipt.SubtotalCents = originalLines
+			receipt.DiscountCents = originalLines - receipt.TotalCents
+			receipt.ShowBreakdown = true
+		}
 		var deliverySummary string
 		if err := db.QueryRow(ctx, `SELECT COALESCE(CONCAT_WS(', ',
 			NULLIF(TRIM(CONCAT_WS(' ',s.recipient_first_name,s.recipient_last_name)),''),
@@ -52,7 +75,8 @@ func enqueuePaymentStatusEmail(ctx context.Context, db mailinfra.QueryRower, cfg
 			FROM orders o LEFT JOIN order_shipping_addresses s ON s.order_id=o.id WHERE o.id=$1`, orderID).Scan(&deliverySummary); err != nil {
 			return 0, err
 		}
-		payload["delivery_summary"] = deliverySummary
+		receipt.DeliverySummary = deliverySummary
+		payload["receipt"] = receipt
 	}
 	return mailinfra.EnqueueReturningID(ctx, db, fmt.Sprintf("payment-status:%d:%d:%s", orderID, paymentID, status), recipient, "payment_status", payload)
 }
