@@ -31,6 +31,17 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 	case "payment_status":
 		if payload["total"] != nil && fmt.Sprint(payload["total"]) != "" {
 			content := `<h2>¡Compra confirmada!</h2><p>Gracias por tu compra. Recibimos el pago de tu orden <strong>` + value("order_id") + `</strong>.</p>`
+			if rawReceipt, ok := payload["receipt"]; ok && rawReceipt != nil {
+				encoded, err := json.Marshal(rawReceipt)
+				if err == nil {
+					var receipt PurchaseReceipt
+					if json.Unmarshal(encoded, &receipt) == nil {
+						content += renderPurchaseReceipt(value("order_id"), value("url"), receipt)
+						return "Compra confirmada · orden " + value("order_id"), wrapper(content), nil
+					}
+				}
+			}
+			// Messages already queued before this rollout keep their original format.
 			if summary := fmt.Sprint(payload["items_summary"]); summary != "" && summary != "<nil>" {
 				content += `<p><strong>Productos</strong><br>` + strings.ReplaceAll(value("items_summary"), "\n", "<br>") + `</p>`
 			}

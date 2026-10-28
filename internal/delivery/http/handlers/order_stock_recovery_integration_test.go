@@ -81,7 +81,7 @@ func TestPaymentWebhookContractIsIdempotent(t *testing.T) {
 		t.Fatalf("paid confirmation was not queued: %v", err)
 	}
 	_, bodyHTML, err := mailinfra.Render("payment_status", payload)
-	if err != nil || !strings.Contains(bodyHTML, "Compra confirmada") || !strings.Contains(bodyHTML, "2 × RC2 product") || !strings.Contains(bodyHTML, "$ 200.00") || !strings.Contains(bodyHTML, "No válido como factura fiscal") {
+	if err != nil || !strings.Contains(bodyHTML, "Compra confirmada") || !strings.Contains(bodyHTML, "2 × $ 100,00") || !strings.Contains(bodyHTML, "RC2 product") || !strings.Contains(bodyHTML, "$ 200,00") || !strings.Contains(bodyHTML, "900001") || !strings.Contains(bodyHTML, "No válido como factura fiscal") {
 		t.Fatalf("paid confirmation is incomplete: %v %s", err, bodyHTML)
 	}
 }

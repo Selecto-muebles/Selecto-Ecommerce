@@ -38,6 +38,38 @@ func TestPaidEmailConfirmsPurchaseWithoutClaimingFiscalInvoice(t *testing.T) {
 	}
 }
 
+func TestPaidEmailRendersTraceablePurchaseReceipt(t *testing.T) {
+	subject, body, err := Render("payment_status", json.RawMessage(`{
+		"order_id":"SEL-123", "total":"$ 850.00", "url":"https://selectosport.com/cuenta/ordenes/SEL-123",
+		"receipt":{
+			"paid_at":"24/10/2026 19:30", "payment_reference":"185961653824",
+			"delivery_summary":"Calle de prueba 123, Buenos Aires (1676)",
+			"subtotal_cents":100000, "discount_cents":15000, "total_cents":85000, "show_breakdown":true,
+			"lines":[{"name":"Producto de prueba", "quantity":10,"unit_price_cents":8500,
+				"original_unit_price_cents":10000,"line_total_cents":85000,
+				"selected_options":{"color":"Negro","modelo":"<script>"}}]
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Compra confirmada", "Gracias por tu compra", "Comprobante de compra", "SEL-123", "185961653824", "24/10/2026 19:30", "10 × $ 85,00", "$ 1.000,00", "− $ 150,00", "$ 850,00", "Calle de prueba 123", "Ver detalle e imprimir comprobante", "No válido como factura fiscal", "modelo: &lt;script&gt;"} {
+		if !strings.Contains(subject+body, want) {
+			t.Errorf("paid receipt missing %q", want)
+		}
+	}
+	if strings.Contains(body, "<script>") || strings.Contains(body, "FACTURA A") {
+		t.Fatal("paid receipt rendered unescaped markup or a fiscal invoice claim")
+	}
+}
+
+func TestPaidEmailWithMalformedNewReceiptFallsBackToQueuedFormat(t *testing.T) {
+	_, body, err := Render("payment_status", json.RawMessage(`{"order_id":"OLD-1","total":"$ 10.00","items_summary":"1 × Prueba","receipt":{"total_cents":"broken"},"url":"https://selectosport.com/orden"}`))
+	if err != nil || !strings.Contains(body, "1 × Prueba") || !strings.Contains(body, "Comprobante de pedido") {
+		t.Fatalf("older queued email should still render: %v %s", err, body)
+	}
+}
+
 func TestWithdrawalEmailsProvideReceiptAndEscapeCustomerData(t *testing.T) {
 	_, acknowledgment, err := Render("withdrawal_ack", json.RawMessage(`{"public_code":"SEL-123","order_reference":"<img>","url":"https://shop.example/boton-de-arrepentimiento"}`))
 	if err != nil {
