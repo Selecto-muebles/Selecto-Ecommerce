@@ -102,7 +102,15 @@ func CarouselImageHandler(store editorial.Store, public bool) gin.HandlerFunc {
 			carouselError(c, err)
 			return
 		}
-		c.Header("Cache-Control", "no-store")
+		// Public image URLs carry the slide version. A new upload changes the URL,
+		// so the browser and CDN may reuse bytes without a database read. Limit
+		// retention to an hour so withdrawn slides do not linger for long.
+		// Keep admin images private and uncacheable.
+		if public && c.Query("v") != "" {
+			c.Header("Cache-Control", "public, max-age=3600")
+		} else {
+			c.Header("Cache-Control", "no-store")
+		}
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Data(http.StatusOK, img.MIME, img.Content)
 	}
