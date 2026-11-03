@@ -32,6 +32,7 @@ type Config struct {
 	StorefrontURL             string
 	AdminURL                  string
 	OTLPTracesEndpoint        string
+	OTELGCPProjectID          string
 	SMTPHost                  string
 	SMTPPort                  int
 	SMTPUsername              string

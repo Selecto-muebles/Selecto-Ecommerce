@@ -94,7 +94,7 @@ func main() {
 		logger.Info("serverless_job_completed", "job", jobName)
 		return
 	}
-	shutdownTracing, err := observability.InitTracing(appCtx, cfg.OTLPTracesEndpoint, cfg.AppEnv)
+	shutdownTracing, err := observability.InitTracing(appCtx, cfg.OTLPTracesEndpoint, cfg.AppEnv, cfg.OTELGCPProjectID)
 	if err != nil {
 		logger.Error("tracing_configuration_invalid", "error", err)
 		os.Exit(1)
