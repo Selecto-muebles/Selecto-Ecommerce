@@ -9,6 +9,7 @@ type GestionarReadiness struct {
 	ShipmentStatus string
 	HasAddress     bool
 	RecipientName  string
+	DNI            string
 	Street         string
 	StreetNumber   string
 	Locality       string
@@ -41,6 +42,9 @@ func (r GestionarReadiness) Blockers() []GestionarBlocker {
 	} else {
 		if strings.TrimSpace(r.RecipientName) == "" {
 			add("recipient_missing", "Falta el nombre del destinatario.")
+		}
+		if strings.TrimSpace(r.DNI) == "" {
+			add("dni_missing", "Falta el DNI del destinatario.")
 		}
 		if strings.TrimSpace(r.Street) == "" || strings.TrimSpace(r.StreetNumber) == "" {
 			add("street_missing", "Faltan la calle o la altura de entrega.")

@@ -5,7 +5,7 @@ import "testing"
 func TestGestionarReadiness(t *testing.T) {
 	valid := GestionarReadiness{
 		OrderStatus: "paid", ShipmentStatus: "preparing", HasAddress: true,
-		RecipientName: "Ada Lovelace", Street: "Calle", StreetNumber: "123",
+		RecipientName: "Ada Lovelace", DNI: "12345678", Street: "Calle", StreetNumber: "123",
 		Locality: "CABA", Province: "Buenos Aires", PostalCode: "1000",
 		Phone: "1112345678", Email: "ada@example.test", ItemCount: 1,
 	}
@@ -39,7 +39,7 @@ func TestGestionarReadinessBlocksIncompleteAddressAndSKU(t *testing.T) {
 	input := GestionarReadiness{OrderStatus: "paid", ShipmentStatus: "preparing", HasAddress: true,
 		RecipientName: " ", Street: "Calle", Locality: "CABA", ItemCount: 2, MissingSKUs: 1}
 	blockers := input.Blockers()
-	for _, code := range []string{"recipient_missing", "street_missing", "location_missing", "phone_missing", "sku_missing"} {
+	for _, code := range []string{"recipient_missing", "dni_missing", "street_missing", "location_missing", "phone_missing", "sku_missing"} {
 		found := false
 		for _, blocker := range blockers {
 			if blocker.Code == code {
