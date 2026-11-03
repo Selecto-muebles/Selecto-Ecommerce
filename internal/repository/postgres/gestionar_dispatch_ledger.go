@@ -53,7 +53,7 @@ func (ledger GestionarLedger) ReservePackage(ctx context.Context, orderID int) (
 	ready := shipping.GestionarReadiness{OrderStatus: orderStatus}
 	var firstName, lastName string
 	err = tx.QueryRow(ctx, `SELECT COALESCE(s.status,''), a.order_id IS NOT NULL,
-		COALESCE(a.recipient_first_name,''), COALESCE(a.recipient_last_name,''),
+		COALESCE(a.recipient_first_name,''), COALESCE(a.recipient_last_name,''), COALESCE(a.dni,''),
 		COALESCE(a.street_address,''), COALESCE(a.street_number,''),
 		COALESCE(a.locality,''), COALESCE(a.province,''), COALESCE(a.postal_code,''),
 		COALESCE(a.phone_number,''), u.email,
@@ -62,7 +62,7 @@ func (ledger GestionarLedger) ReservePackage(ctx context.Context, orderID int) (
 		FROM orders o JOIN users u ON u.id=o.user_id
 		LEFT JOIN shipments s ON s.order_id=o.id
 		LEFT JOIN order_shipping_addresses a ON a.order_id=o.id WHERE o.id=$1`, orderID).
-		Scan(&ready.ShipmentStatus, &ready.HasAddress, &firstName, &lastName,
+		Scan(&ready.ShipmentStatus, &ready.HasAddress, &firstName, &lastName, &ready.DNI,
 			&ready.Street, &ready.StreetNumber, &ready.Locality, &ready.Province,
 			&ready.PostalCode, &ready.Phone, &ready.Email, &ready.ItemCount, &ready.MissingSKUs)
 	if err != nil {

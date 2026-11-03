@@ -16,6 +16,8 @@ type AuditReport struct {
 }
 
 var requiredCommerceColumns = map[string][]string{
+	"logistics_cutoff_batches": {"id", "cutoff_at", "csv_content", "csv_sha256", "order_count", "line_count", "excluded_order_count", "legacy_review_required", "state", "prepared_at", "handed_off_at", "handed_off_by", "handoff_channel", "handoff_recipient"},
+	"logistics_cutoff_batch_orders": {"batch_id", "order_id"},
 	"marketing_sync_outbox":        {"id", "event_key", "subscription_id", "email", "operation", "subscription_version", "status", "attempts", "next_attempt_at", "locked_at", "completed_at", "last_error"},
 	"marketing_unsubscribe_tokens": {"id", "email", "token_hash", "expires_at", "consumed_at"},
 	"brevo_webhook_events":         {"event_key", "event_type", "event_scope", "email", "provider_message_id", "outbox_event_key", "occurred_at"},
@@ -44,6 +46,7 @@ var requiredCommerceColumns = map[string][]string{
 }
 
 var requiredCommerceIndexes = []string{
+	"idx_logistics_cutoff_batches_recent",
 	"idx_marketing_sync_outbox_due",
 	"idx_marketing_unsubscribe_tokens_active",
 	"idx_brevo_webhook_events_created",

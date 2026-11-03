@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	mailinfra "Selecto-Ecommerce/internal/infrastructure/email"
 	postgresrepo "Selecto-Ecommerce/internal/repository/postgres"
+	"Selecto-Ecommerce/internal/service/logistics"
 	orderservice "Selecto-Ecommerce/internal/service/orders"
 	"Selecto-Ecommerce/internal/shared/logging"
 )
 
 const (
-	ExpireOrders = "expire-orders"
-	EmailOutbox  = "email-outbox"
+	ExpireOrders    = "expire-orders"
+	EmailOutbox     = "email-outbox"
+	LogisticsCutoff = "logistics-cutoff"
 )
 
 func Run(ctx context.Context, name string, db *database.DB, cfg *config.Config, logger *slog.Logger) error {
@@ -25,6 +28,12 @@ func Run(ctx context.Context, name string, db *database.DB, cfg *config.Config, 
 		return err
 	case EmailOutbox:
 		_, err := runEmailOutbox(ctx, db, cfg, logger)
+		return err
+	case LogisticsCutoff:
+		batches, err := (logistics.Store{Pool: db.Pool}).PrepareDue(ctx, time.Now())
+		if err == nil {
+			logger.Info("logistics_cutoff_completed", "batches_created", len(batches))
+		}
 		return err
 	default:
 		return configError(name)

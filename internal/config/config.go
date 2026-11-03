@@ -178,6 +178,8 @@ func (c *Config) ValidateJob(name string) error {
 		if err := c.validateBrevo(); err != nil {
 			return err
 		}
+	case "logistics-cutoff":
+		// The scheduled job needs only the existing database connection.
 	default:
 		return errors.New("unknown job")
 	}

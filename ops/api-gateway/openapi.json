@@ -568,6 +568,22 @@
         "responses": {"204": {"description": "Preflight CORS"}}
       }
     },
+    "/admin/logistics/batches": {
+      "get": {"operationId":"AdminLogisticsBatchList","responses":{"200":{"description":"Tandas persistentes de despacho"},"401":{"description":"Autenticación requerida"}}},
+      "options": {"operationId":"CorsAdminLogisticsBatchList","responses":{"204":{"description":"Preflight CORS"}}}
+    },
+    "/admin/logistics/batches/prepare": {
+      "post": {"operationId":"AdminLogisticsBatchPrepare","responses":{"200":{"description":"Cortes vencidos preparados de forma idempotente"},"401":{"description":"Autenticación requerida"}}},
+      "options": {"operationId":"CorsAdminLogisticsBatchPrepare","responses":{"204":{"description":"Preflight CORS"}}}
+    },
+    "/admin/logistics/batches/{id}/export": {
+      "get": {"operationId":"AdminLogisticsBatchExport","parameters":[{"name":"id","in":"path","required":true,"type":"integer","format":"int64"}],"responses":{"200":{"description":"CSV inmutable de la tanda"},"404":{"description":"Tanda no encontrada"}}},
+      "options": {"operationId":"CorsAdminLogisticsBatchExport","parameters":[{"name":"id","in":"path","required":true,"type":"integer","format":"int64"}],"responses":{"204":{"description":"Preflight CORS"}}}
+    },
+    "/admin/logistics/batches/{id}/handoff": {
+      "post": {"operationId":"AdminLogisticsBatchHandoff","parameters":[{"name":"id","in":"path","required":true,"type":"integer","format":"int64"}],"responses":{"200":{"description":"Envío manual a logística registrado"},"400":{"description":"Datos inválidos"},"404":{"description":"Tanda no encontrada"}}},
+      "options": {"operationId":"CorsAdminLogisticsBatchHandoff","parameters":[{"name":"id","in":"path","required":true,"type":"integer","format":"int64"}],"responses":{"204":{"description":"Preflight CORS"}}}
+    },
     "/admin/orders/{id}": {
       "get": {
         "operationId": "AdminGetOrder",

@@ -29,7 +29,7 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 		}
 		rows, err := db.Pool.Query(c, `
 			SELECT o.id, o.status, COALESCE(s.status,''), o.paid_at,
-				a.order_id IS NOT NULL, COALESCE(a.recipient_first_name,''), COALESCE(a.recipient_last_name,''),
+				a.order_id IS NOT NULL, COALESCE(a.recipient_first_name,''), COALESCE(a.recipient_last_name,''), COALESCE(a.dni,''),
 				COALESCE(a.street_address,''), COALESCE(a.street_number,''), COALESCE(a.locality,''),
 				COALESCE(a.province,''), COALESCE(a.postal_code,''), COALESCE(a.phone_number,''), u.email,
 				(SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id),
@@ -56,7 +56,7 @@ func AdminGestionarDispatchesHandler(db *database.DB) gin.HandlerFunc {
 			var readiness shippingservice.GestionarReadiness
 			var firstName, lastName, packageState, pickupState string
 			if err := rows.Scan(&id, &readiness.OrderStatus, &readiness.ShipmentStatus, &paidAt,
-				&readiness.HasAddress, &firstName, &lastName, &readiness.Street, &readiness.StreetNumber,
+				&readiness.HasAddress, &firstName, &lastName, &readiness.DNI, &readiness.Street, &readiness.StreetNumber,
 				&readiness.Locality, &readiness.Province, &readiness.PostalCode, &readiness.Phone,
 				&readiness.Email, &readiness.ItemCount, &readiness.MissingSKUs,
 				&packageState, &pickupState); err != nil {
@@ -144,6 +144,7 @@ func AdminGestionarDispatchPreviewHandler(db *database.DB) gin.HandlerFunc {
 		}
 		if address != nil {
 			readiness.RecipientName = address.RecipientName
+			readiness.DNI = address.DNI
 			readiness.Street = address.StreetAddress
 			readiness.StreetNumber = address.StreetNumber
 			readiness.Locality = address.Locality
