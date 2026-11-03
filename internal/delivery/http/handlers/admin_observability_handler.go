@@ -27,7 +27,7 @@ func AdminObservabilityHandler(db *database.DB, cfg *config.Config) gin.HandlerF
 		if cfg.OTLPTracesEndpoint != "" {
 			tracingStatus = "configured"
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "database": dbStatus, "pending_expired_orders": pendingExpired, "recent_payment_webhook_events": webhooks, "tracing": gin.H{"status": tracingStatus, "sample_ratio": observability.TraceSampleRatio}})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "database": dbStatus, "pending_expired_orders": pendingExpired, "recent_payment_webhook_events": webhooks, "tracing": gin.H{"status": tracingStatus, "sample_ratio": observability.TraceSampleRatio, "destination": observability.TraceDestination(cfg.OTLPTracesEndpoint), "project_id": cfg.OTELGCPProjectID}})
 	}
 }
 
