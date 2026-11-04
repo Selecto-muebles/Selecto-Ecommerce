@@ -30,7 +30,7 @@ type PurchaseReceiptLine struct {
 	SelectedOptions        map[string]any `json:"selected_options"`
 }
 
-func renderPurchaseReceipt(orderID, orderURL string, receipt PurchaseReceipt) string {
+func renderPurchaseReceipt(orderID, orderURL, supportURL string, receipt PurchaseReceipt) string {
 	var body strings.Builder
 	body.WriteString(`<section style="border:1px solid #d7d7d7;border-top:4px solid #171717;border-radius:8px;padding:22px;margin:24px 0;background:#fff">`)
 	body.WriteString(`<p style="margin:0 0 8px;color:#775234;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase">Comprobante de compra · Selecto</p>`)
@@ -73,7 +73,12 @@ func renderPurchaseReceipt(orderID, orderURL string, receipt PurchaseReceipt) st
 	if receipt.DeliverySummary != "" {
 		body.WriteString(`<p style="margin:18px 0 0;font-size:13px"><strong>Entrega coordinada</strong><br>` + html.EscapeString(receipt.DeliverySummary) + `</p>`)
 	}
-	body.WriteString(`<p style="margin:20px 0 0;padding-top:14px;border-top:1px solid #e5e5e5;font-size:12px;color:#666">Documento informativo para identificar esta compra en Selecto. No válido como factura fiscal. El costo de envío se coordina por separado.</p>`)
+	body.WriteString(`<p style="margin:20px 0 0;padding-top:14px;border-top:1px solid #e5e5e5;font-size:13px;color:#171717"><strong>Conservá esta constancia.</strong> Identifica tu compra y su pago. Para consultas sobre la entrega, cambios o garantía, indicá el número de orden y, si corresponde, la referencia de pago.`)
+	if supportURL != "" {
+		body.WriteString(` <a href="` + html.EscapeString(supportURL) + `">Contactar a Posventa</a>.`)
+	}
+	body.WriteString(`</p>`)
+	body.WriteString(`<p style="margin:10px 0 0;font-size:12px;color:#666">No válido como factura fiscal: Selecto debe emitir y entregar la factura o ticket fiscal por separado. El costo de envío se coordina por separado.</p>`)
 	body.WriteString(`</section><p style="margin:20px 0"><a style="display:inline-block;background:#171717;color:#fff;padding:13px 18px;text-decoration:none;border-radius:4px;font-weight:bold" href="` + orderURL + `">Ver detalle e imprimir comprobante</a></p>`)
 	return body.String()
 }
