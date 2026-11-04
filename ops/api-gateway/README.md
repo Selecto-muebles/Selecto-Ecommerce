@@ -1,11 +1,14 @@
 # API Gateway de Ecommerce durante el corte a Selecto
 
-`openapi.json` contiene las 89 rutas vigentes de Ecommerce, incluidas categorías,
+`openapi.json` contiene las 94 rutas vigentes de Ecommerce, incluidas categorías,
 contenido editorial, reseñas, recuperación de acceso administrativo, términos
 públicos, arrepentimiento, edición versionada de artículos legales y cuatro
 consultas administrativas de solo lectura para preparar la operación con Gestionar. Mantiene
 los contratos existentes, incluidos `GET`/`OPTIONS
-/admin/payments/records/{record_id}` y `DELETE /admin/products/{id}`. El backend
+/admin/payments/records/{record_id}` y `DELETE /admin/products/{id}`. Incluye
+también las cuatro rutas de tandas persistentes (`/admin/logistics/batches`,
+`/prepare`, `/{id}/export`, `/{id}/handoff`), la descarga de despachos y la
+renovación de sesiones de clientes. El backend
 continúa siendo el Cloud Run privado
 `destry-ecommerce-staging`; no se crea otro Gateway, servicio, red ni
 balanceador.
@@ -43,7 +46,7 @@ gcloud api-gateway gateways update destry-ecommerce-staging-gw \
 ```
 
 Antes de actualizar se debe capturar el ID activo para rollback y comprobar que
-la configuración compilada conserva las 89 rutas esperadas. Después se prueban
+la configuración compilada conserva las 94 rutas esperadas. Después se prueban
 `/health`, catálogo, autenticación, CORS, recuperación administrativa,
 eliminación protegida de productos, newsletter, comunicaciones y detalle
 multiproveedor del Backoffice. También se comprueba que
@@ -57,6 +60,11 @@ Para Gestionar, verificar que las cuatro rutas administrativas de lectura
 ```bash
 SELECTO_API_URL=https://api.selectosport.com node ../../scripts/smoke_gestionar_gateway.mjs
 ```
+
+La prueba también verifica las cuatro rutas de tandas. Para las dos rutas de
+escritura solo ejecuta `OPTIONS`; nunca crea tandas ni registra entregas. Antes
+de publicar esta configuración, la API Config antigua devuelve 404 para esas
+rutas aunque el backend actualizado ya esté desplegado.
 
 La bandeja y la vista previa muestran datos internos de órdenes pagadas. No envían
 pedidos a Gestionar ni certifican su API externa; el proveedor permanece

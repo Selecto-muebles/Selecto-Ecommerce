@@ -56,3 +56,43 @@ for (const path of paths) {
   }
   console.log(`${path}: GET protegido y preflight CORS correctos.`);
 }
+
+const batchPaths = [
+  ["/admin/logistics/batches", "GET", 401],
+  ["/admin/logistics/batches/1/export", "GET", 401],
+  ["/admin/logistics/batches/prepare", "POST", 401],
+  ["/admin/logistics/batches/1/handoff", "POST", 401],
+];
+
+for (const [path, method, unauthenticatedStatus] of batchPaths) {
+  const url = new URL(path, baseURL);
+  const preflight = await fetch(url, {
+    method: "OPTIONS",
+    headers: {
+      Origin: origin,
+      "Access-Control-Request-Method": method,
+      "Access-Control-Request-Headers": "authorization,x-request-id,x-correlation-id",
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(10000),
+  });
+  const allowedOrigin = preflight.headers.get("access-control-allow-origin");
+  const allowedMethods = preflight.headers.get("access-control-allow-methods") ?? "";
+  const allowedHeaders = (preflight.headers.get("access-control-allow-headers") ?? "").toLowerCase();
+  if (
+    preflight.status !== 204 ||
+    allowedOrigin !== origin ||
+    !allowedMethods.includes(method) ||
+    !allowedHeaders.includes("authorization")
+  ) {
+    throw new Error(`OPTIONS ${path}: preflight CORS inválido (${preflight.status}).`);
+  }
+  // Never POST to a production logistics endpoint, even without credentials.
+  if (method === "GET") {
+    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(10000) });
+    if (response.status !== unauthenticatedStatus) {
+      throw new Error(`GET ${path}: esperado ${unauthenticatedStatus}, recibido ${response.status}.`);
+    }
+  }
+  console.log(`${path}: ruta protegida y preflight ${method} correctos.`);
+}
