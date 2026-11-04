@@ -32,11 +32,12 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 		if payload["total"] != nil && fmt.Sprint(payload["total"]) != "" {
 			content := `<h2>¡Compra confirmada!</h2><p>Gracias por tu compra. Recibimos el pago de tu orden <strong>` + value("order_id") + `</strong>.</p>`
 			if rawReceipt, ok := payload["receipt"]; ok && rawReceipt != nil {
+				supportURL, _ := payload["support_url"].(string)
 				encoded, err := json.Marshal(rawReceipt)
 				if err == nil {
 					var receipt PurchaseReceipt
 					if json.Unmarshal(encoded, &receipt) == nil {
-						content += renderPurchaseReceipt(value("order_id"), value("url"), receipt)
+						content += renderPurchaseReceipt(value("order_id"), value("url"), supportURL, receipt)
 						return "Compra confirmada · orden " + value("order_id"), wrapper(content), nil
 					}
 				}
@@ -48,7 +49,10 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 			if delivery := fmt.Sprint(payload["delivery_summary"]); delivery != "" && delivery != "<nil>" {
 				content += `<p><strong>Entrega</strong><br>` + value("delivery_summary") + `</p>`
 			}
-			content += `<section style="border:1px solid #bbb;padding:16px;margin:20px 0"><p style="margin:0 0 8px;font-size:12px;text-transform:uppercase">Comprobante de pedido</p><p style="margin:0"><strong>Total pagado: ` + value("total") + `</strong></p><p style="margin:8px 0 0;font-size:12px;color:#666">Documento informativo. No válido como factura fiscal.</p></section>`
+			content += `<section style="border:1px solid #bbb;padding:16px;margin:20px 0"><p style="margin:0 0 8px;font-size:12px;text-transform:uppercase">Comprobante de pedido</p><p style="margin:0"><strong>Total pagado: ` + value("total") + `</strong></p><p style="margin:8px 0 0;font-size:12px;color:#666">Conservá esta constancia para consultas sobre tu compra, entrega o garantía. Indicá el número de orden. No válido como factura fiscal: Selecto debe emitir y entregar la factura o ticket fiscal por separado.</p></section>`
+			if supportURL, ok := payload["support_url"].(string); ok && supportURL != "" {
+				content += `<p><a href="` + html.EscapeString(supportURL) + `">Contactar a Posventa</a></p>`
+			}
 			return "Compra confirmada · orden " + value("order_id"), wrapper(content + button("Ver detalle y entrega", value("url"))), nil
 		}
 		return "Actualización de pago de la orden " + value("order_id"), wrapper(`<h2>Estado del pago: ` + value("status_label") + `</h2><p>Orden ` + value("order_id") + `.</p>` + button("Consultar orden", value("url"))), nil

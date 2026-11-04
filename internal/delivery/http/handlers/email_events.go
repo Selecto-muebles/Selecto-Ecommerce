@@ -31,6 +31,7 @@ func enqueuePaymentStatusEmail(ctx context.Context, db mailinfra.QueryRower, cfg
 	}
 	payload := map[string]any{
 		"order_id": publicID, "status_label": label, "url": cfg.StorefrontURL + "/cuenta/ordenes/" + publicID,
+		"support_url": cfg.StorefrontURL + "/posventa",
 	}
 	if status == "paid" {
 		var receipt mailinfra.PurchaseReceipt

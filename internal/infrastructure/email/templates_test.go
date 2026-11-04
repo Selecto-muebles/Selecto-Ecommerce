@@ -40,7 +40,7 @@ func TestPaidEmailConfirmsPurchaseWithoutClaimingFiscalInvoice(t *testing.T) {
 
 func TestPaidEmailRendersTraceablePurchaseReceipt(t *testing.T) {
 	subject, body, err := Render("payment_status", json.RawMessage(`{
-		"order_id":"SEL-123", "total":"$ 850.00", "url":"https://selectosport.com/cuenta/ordenes/SEL-123",
+		"order_id":"SEL-123", "total":"$ 850.00", "url":"https://selectosport.com/cuenta/ordenes/SEL-123", "support_url":"https://selectosport.com/posventa",
 		"receipt":{
 			"paid_at":"24/10/2026 19:30", "payment_reference":"185961653824",
 			"delivery_summary":"Calle de prueba 123, Buenos Aires (1676)",
@@ -53,7 +53,7 @@ func TestPaidEmailRendersTraceablePurchaseReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Compra confirmada", "Gracias por tu compra", "Comprobante de compra", "SEL-123", "185961653824", "24/10/2026 19:30", "10 × $ 85,00", "$ 1.000,00", "− $ 150,00", "$ 850,00", "Calle de prueba 123", "Ver detalle e imprimir comprobante", "No válido como factura fiscal", "modelo: &lt;script&gt;"} {
+	for _, want := range []string{"Compra confirmada", "Gracias por tu compra", "Comprobante de compra", "SEL-123", "185961653824", "24/10/2026 19:30", "10 × $ 85,00", "$ 1.000,00", "− $ 150,00", "$ 850,00", "Calle de prueba 123", "Ver detalle e imprimir comprobante", "Conservá esta constancia", "garantía", "https://selectosport.com/posventa", "Selecto debe emitir y entregar la factura o ticket fiscal por separado", "No válido como factura fiscal", "modelo: &lt;script&gt;"} {
 		if !strings.Contains(subject+body, want) {
 			t.Errorf("paid receipt missing %q", want)
 		}
@@ -67,6 +67,18 @@ func TestPaidEmailWithMalformedNewReceiptFallsBackToQueuedFormat(t *testing.T) {
 	_, body, err := Render("payment_status", json.RawMessage(`{"order_id":"OLD-1","total":"$ 10.00","items_summary":"1 × Prueba","receipt":{"total_cents":"broken"},"url":"https://selectosport.com/orden"}`))
 	if err != nil || !strings.Contains(body, "1 × Prueba") || !strings.Contains(body, "Comprobante de pedido") {
 		t.Fatalf("older queued email should still render: %v %s", err, body)
+	}
+}
+
+func TestLegacyPaidEmailIncludesSupportAndFiscalDistinction(t *testing.T) {
+	_, body, err := Render("payment_status", json.RawMessage(`{"order_id":"OLD-2","total":"$ 100.00","support_url":"https://selectosport.com/posventa","url":"https://selectosport.com/cuenta/ordenes/OLD-2"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"OLD-2", "garantía", "https://selectosport.com/posventa", "No válido como factura fiscal"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("legacy paid email missing %q", want)
+		}
 	}
 }
 
