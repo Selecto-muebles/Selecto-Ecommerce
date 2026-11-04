@@ -16,6 +16,21 @@ func TestRenderEscapesPayload(t *testing.T) {
 	}
 }
 
+func TestAllAutomaticEmailsUseStorefrontBrand(t *testing.T) {
+	templates := []string{"verify_email", "password_reset", "order_created", "payment_status", "shipment_status", "newsletter_unsubscribe", "withdrawal_ack", "withdrawal_update"}
+	for _, name := range templates {
+		t.Run(name, func(t *testing.T) {
+			_, body, err := Render(name, json.RawMessage(`{"order_id":"SEL-123","url":"https://selectosport.com/","status_label":"pendiente"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(body, `<img src="https://selectosport.com/logo-selecto.png"`) || !strings.Contains(body, `>SELECTO</h1>`) {
+				t.Fatal("email must use the storefront logo and visible text wordmark")
+			}
+		})
+	}
+}
+
 func TestOrderCreatedIsClearlyAnInformationalReceipt(t *testing.T) {
 	_, body, err := Render("order_created", json.RawMessage(`{"order_id":"ABC123","total":"$ 10","url":"https://shop.example/order"}`))
 	if err != nil {

@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// Public storefront asset. The wordmark remains readable when an email client
+// does not load remote images.
+const emailLogoURL = "https://selectosport.com/logo-selecto.png"
+
 func Render(template string, raw json.RawMessage) (string, string, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -17,7 +21,11 @@ func Render(template string, raw json.RawMessage) (string, string, error) {
 		return `<p><a style="display:inline-block;background:#111;color:#fff;padding:12px 18px;text-decoration:none" href="` + url + `">` + label + `</a></p>`
 	}
 	wrapper := func(content string) string {
-		return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#171717;line-height:1.5"><main style="max-width:640px;margin:auto;padding:24px"><h1 style="font-size:24px">Selecto</h1>` + content + `<hr><p style="font-size:12px;color:#666">Este mensaje fue generado automáticamente. No compartas enlaces de seguridad.</p></main></body></html>`
+		return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#171717;line-height:1.5"><main style="max-width:640px;margin:auto;padding:24px">` +
+			`<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 28px"><tr>` +
+			`<td style="width:42px;vertical-align:middle"><img src="` + emailLogoURL + `" width="32" height="43" alt="" style="display:block;border:0;width:32px;height:43px"></td>` +
+			`<td style="vertical-align:middle"><h1 style="margin:0;font-size:24px;line-height:1.2;letter-spacing:-1px;color:#171717">SELECTO</h1></td>` +
+			`</tr></table>` + content + `<hr><p style="font-size:12px;color:#666">Este mensaje fue generado automáticamente. No compartas enlaces de seguridad.</p></main></body></html>`
 	}
 	switch template {
 	case "verify_email":
