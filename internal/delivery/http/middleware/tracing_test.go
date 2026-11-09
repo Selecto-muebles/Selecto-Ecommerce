@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
@@ -39,5 +40,29 @@ func TestTraceRequestsPreservesHTTPResponse(t *testing.T) {
 		if strings.Contains(field.Value.Emit(), "order-123") || strings.Contains(field.Value.Emit(), "not-for-telemetry") {
 			t.Fatalf("trace leaked URL data in %s", field.Key)
 		}
+	}
+}
+
+func TestTraceRequestsFlushesSampledSpansBeforeRequestEnds(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter, sdktrace.WithBatchTimeout(time.Hour)),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+	)
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previous)
+		_ = provider.Shutdown(t.Context())
+	})
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(TraceRequests())
+	router.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.GET("/catalog", func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/catalog", nil))
+	spans := exporter.GetSpans()
+	if len(spans) != 1 || spans[0].Name != "GET /catalog" {
+		t.Fatalf("sampled request was not exported before returning: %v", spans)
 	}
 }
