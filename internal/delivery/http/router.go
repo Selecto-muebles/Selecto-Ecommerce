@@ -123,6 +123,7 @@ func SetupRouter(
 	admin.POST("/admin/categories", handlers.CreateCategoryHandler(db))
 	admin.PATCH("/admin/categories/reorder", handlers.ReorderCategoriesHandler(db))
 	admin.PATCH("/admin/categories/:id", handlers.UpdateCategoryHandler(db))
+	admin.DELETE("/admin/categories/:id", handlers.DeleteCategoryHandler(db))
 	admin.GET("/admin/carousel-slides", handlers.ListCarouselHandler(carousel, false))
 	admin.POST("/admin/carousel-slides", handlers.SaveCarouselHandler(carousel, true))
 	admin.PATCH("/admin/carousel-slides/:id", handlers.SaveCarouselHandler(carousel, false))

@@ -47,6 +47,24 @@ func UpdateCategoryHandler(db *database.DB) gin.HandlerFunc {
 	}
 }
 
+func DeleteCategoryHandler(db *database.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, ok := adminIDParam(c, "id")
+		if !ok {
+			return
+		}
+		if err := postgres.DeleteCategory(c, db.Pool, int64(id), adminActor(c)); err != nil {
+			if errors.Is(err, postgres.ErrCategoryInUse) {
+				apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "move products and carousel slides before deleting this category", nil)
+				return
+			}
+			handleCategoryOperationError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
 func ReorderCategoriesHandler(db *database.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
@@ -82,9 +100,15 @@ func handleCategoryOperationError(c *gin.Context, err error) {
 		return
 	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "category name or slug already exists", nil)
-		return
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "category name or slug already exists", nil)
+			return
+		case "23503", "23001":
+			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "move products and carousel slides before deleting this category", nil)
+			return
+		}
 	}
 	apperrors.Internal(c)
 }

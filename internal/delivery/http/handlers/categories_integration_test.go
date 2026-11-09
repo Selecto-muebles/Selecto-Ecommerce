@@ -186,3 +186,66 @@ func TestCategoryCreateAuditIsAtomicAndDuplicateRejected(t *testing.T) {
 		t.Fatal("duplicate accepted")
 	}
 }
+
+func TestDeleteCategoryOnlyWhenEmptyAndKeepsAudit(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	suffix := time.Now().UnixNano()
+	empty, err := postgres.CreateCategory(ctx, pool, catalog.Category{
+		Name: fmt.Sprintf("Vacía %d", suffix), Slug: fmt.Sprintf("vacia-%d", suffix), Active: true,
+	}, "admin@selecto.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked, err := postgres.CreateCategory(ctx, pool, catalog.Category{
+		Name: fmt.Sprintf("Ocupada %d", suffix), Slug: fmt.Sprintf("ocupada-%d", suffix), Active: true,
+	}, "admin@selecto.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	featured, err := postgres.CreateCategory(ctx, pool, catalog.Category{
+		Name: fmt.Sprintf("Destacada %d", suffix), Slug: fmt.Sprintf("destacada-%d", suffix), Active: true,
+	}, "admin@selecto.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slideID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO carousel_slides(title,alt_text,cta_label,target_kind,category_id,mime_type,content)
+	 VALUES('Category delete guard','Category image','Ver','category',$1,'image/png',$2) RETURNING id`, featured.ID, []byte{1}).Scan(&slideID); err != nil {
+		t.Fatal(err)
+	}
+	var productID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO products(name,price,stock,category,category_id)
+	 VALUES('Category delete guard',100,1,$1,$2) RETURNING id`, linked.Name, linked.ID).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
+		_, _ = pool.Exec(ctx, "DELETE FROM carousel_slides WHERE id=$1", slideID)
+		_, _ = pool.Exec(ctx, "DELETE FROM categories WHERE id IN ($1,$2,$3)", empty.ID, linked.ID, featured.ID)
+		_, _ = pool.Exec(ctx, "DELETE FROM audit_logs WHERE entity_type='category' AND entity_id IN ($1,$2,$3)", empty.ID, linked.ID, featured.ID)
+	})
+	if err := postgres.DeleteCategory(ctx, pool, linked.ID, "admin@selecto.test"); !errors.Is(err, postgres.ErrCategoryInUse) {
+		t.Fatalf("delete category with product: %v", err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM products WHERE id=$1 AND category_id=$2", productID, linked.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("linked product changed: count=%d err=%v", count, err)
+	}
+	if err := postgres.DeleteCategory(ctx, pool, featured.ID, "admin@selecto.test"); !errors.Is(err, postgres.ErrCategoryInUse) {
+		t.Fatalf("delete category used by carousel: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM carousel_slides WHERE id=$1 AND category_id=$2", slideID, featured.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("carousel link changed: count=%d err=%v", count, err)
+	}
+	if err := postgres.DeleteCategory(ctx, pool, empty.ID, "admin@selecto.test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM categories WHERE id=$1", empty.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("empty category remains: count=%d err=%v", count, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE entity_type='category'
+	 AND entity_id=$1 AND action='category_deleted'`, empty.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("delete audit missing: count=%d err=%v", count, err)
+	}
+}
