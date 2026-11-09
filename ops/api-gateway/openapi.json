@@ -888,6 +888,20 @@
         "parameters": [{ "name": "id", "in": "path", "required": true, "type": "string" }]
       }
     },
+    "/admin/product-families": {
+      "get": {
+        "operationId": "AdminListProductFamilies",
+        "responses": { "200": { "description": "Familias de productos" } }
+      },
+      "post": {
+        "operationId": "AdminCreateProductFamily",
+        "responses": { "201": { "description": "Familia creada" } }
+      },
+      "options": {
+        "operationId": "CorsAdminProductFamilies",
+        "responses": { "204": { "description": "Preflight" } }
+      }
+    },
     "/admin/products": {
       "get": {
         "operationId": "AdminListProducts",

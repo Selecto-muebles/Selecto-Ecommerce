@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"Selecto-Ecommerce/internal/config"
 	"Selecto-Ecommerce/internal/domain"
@@ -156,7 +159,8 @@ func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.Prepa
 		var priceCents int64
 		var stock int
 		var productName, sku string
-		err := tx.QueryRow(ctx, "SELECT ROUND(price * 100)::BIGINT, stock, name, COALESCE(sku, '') FROM products WHERE id=$1 AND active=TRUE FOR UPDATE", productID).Scan(&priceCents, &stock, &productName, &sku)
+		var variantRaw []byte
+		err := tx.QueryRow(ctx, "SELECT ROUND(price * 100)::BIGINT, stock, name, COALESCE(sku, ''), variant_values FROM products WHERE id=$1 AND active=TRUE FOR UPDATE", productID).Scan(&priceCents, &stock, &productName, &sku, &variantRaw)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil, nil, orderservice.InvalidProductError{ProductID: productID}
 		}
@@ -165,6 +169,22 @@ func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.Prepa
 		}
 		if stock < quantity {
 			return 0, nil, nil, orderservice.InsufficientStockError{ProductID: productID, Available: stock}
+		}
+		variantValues := map[string]string{}
+		if err := json.Unmarshal(variantRaw, &variantValues); err != nil {
+			return 0, nil, nil, err
+		}
+		if len(variantValues) > 0 {
+			keys := make([]string, 0, len(variantValues))
+			for key := range variantValues {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			labels := make([]string, 0, len(keys))
+			for _, key := range keys {
+				labels = append(labels, key+": "+variantValues[key])
+			}
+			productName += " · " + strings.Join(labels, " · ")
 		}
 		for _, item := range grouped[productID] {
 			if err := ValidateSelectedOptions(ctx, tx, productID, item.SelectedOptions); err != nil {
@@ -180,10 +200,19 @@ func reserveProducts(ctx context.Context, tx pgx.Tx, prepared orderservice.Prepa
 		total += money.Cents(pricing.Subtotal)
 		reservations = append(reservations, orderservice.Reservation{ProductID: productID, Quantity: quantity, RemainingStock: stock - quantity})
 		for _, item := range grouped[productID] {
+			selectedOptions := make(map[string]string, len(item.SelectedOptions)+len(variantValues))
+			for key, value := range item.SelectedOptions {
+				selectedOptions[key] = value
+			}
+			for key, value := range variantValues {
+				if _, exists := selectedOptions[key]; !exists {
+					selectedOptions[key] = value
+				}
+			}
 			items = append(items, reservedOrderItem{
 				productID: productID, productName: productName, sku: sku,
 				quantity: item.Quantity, price: price, originalPrice: originalPrice,
-				discountPercent: pricing.DiscountPercent, selectedOptions: item.SelectedOptions,
+				discountPercent: pricing.DiscountPercent, selectedOptions: selectedOptions,
 			})
 		}
 	}
