@@ -30,6 +30,7 @@ type ProductResponse struct {
 	Options        []productOption        `json:"options"`
 	Specifications productSpecifications  `json:"specifications"`
 	ReviewSummary  productReviewSummary   `json:"review_summary"`
+	Family         *productFamily         `json:"family,omitempty"`
 }
 
 func GetProductsHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
@@ -86,7 +87,14 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 	if err != nil {
 		return nil, err
 	}
+	familiesByProduct, err := productFamiliesByProduct(c, db, productIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index, id := range productIDs {
+		if family, ok := familiesByProduct[id]; ok {
+			products[index].Family = &family
+		}
 		products[index].Images = imagesByProduct[id]
 		if products[index].Images == nil {
 			products[index].Images = []productImageResponse{}

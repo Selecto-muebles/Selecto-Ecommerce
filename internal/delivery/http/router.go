@@ -130,6 +130,8 @@ func SetupRouter(
 	admin.DELETE("/admin/carousel-slides/:id", handlers.DeleteCarouselHandler(carousel))
 	admin.GET("/admin/carousel-slides/:id/image", handlers.CarouselImageHandler(carousel, false))
 	admin.GET("/admin/products", handlers.AdminListProductsHandler(db))
+	admin.GET("/admin/product-families", handlers.AdminListProductFamiliesHandler(db))
+	admin.POST("/admin/product-families", handlers.AdminCreateProductFamilyHandler(db))
 	admin.GET("/admin/products/:id", handlers.AdminGetProductHandler(db))
 	admin.POST("/admin/products", handlers.AdminCreateProductHandler(db, logger))
 	admin.PATCH("/admin/products/:id", handlers.AdminUpdateProductHandler(db, logger))

@@ -35,6 +35,8 @@ type adminProductInput struct {
 	Category       *string                `json:"category"`
 	Options        *[]productOption       `json:"options"`
 	Specifications *productSpecifications `json:"specifications"`
+	FamilyID       *int                   `json:"family_id"`
+	VariantValues  map[string]string      `json:"variant_values"`
 }
 
 func adminPagination(c *gin.Context) adminPage {

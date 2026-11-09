@@ -92,7 +92,15 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
+		families, err := productFamiliesByProduct(c, db, productIDs)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		for index, id := range productIDs {
+			if family, ok := families[id]; ok {
+				items[index]["family"] = family
+			}
 			items[index]["images"] = images[id]
 			if images[id] == nil {
 				items[index]["images"] = []productImageResponse{}
@@ -145,5 +153,13 @@ func adminProduct(ctx context.Context, db *database.DB, id int) (gin.H, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "specifications": specifications, "archived_at": archivedAt, "images": images, "options": options, "created_at": createdAt, "updated_at": updatedAt}, nil
+	families, err := productFamiliesByProduct(ctx, db, []int{id})
+	if err != nil {
+		return nil, err
+	}
+	item := gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "specifications": specifications, "archived_at": archivedAt, "images": images, "options": options, "created_at": createdAt, "updated_at": updatedAt}
+	if family, ok := families[id]; ok {
+		item["family"] = family
+	}
+	return item, nil
 }

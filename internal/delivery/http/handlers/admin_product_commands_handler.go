@@ -65,10 +65,19 @@ func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			return
 		}
 		defer tx.Rollback(c)
-		var id int
-		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, specifications, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active, description, category, specificationsJSON).Scan(&id)
+		familyID := 0
+		if input.FamilyID != nil {
+			familyID = *input.FamilyID
+		}
+		variantJSON, err := familyAssignment(c, tx, familyID, input.VariantValues)
 		if err != nil {
-			apperrors.Internal(c)
+			handleFamilyWriteError(c, err)
+			return
+		}
+		var id int
+		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, specifications, family_id, variant_values, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, NULLIF($9,0), $10, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active, description, category, specificationsJSON, familyID, variantJSON).Scan(&id)
+		if err != nil {
+			handleFamilyWriteError(c, err)
 			return
 		}
 		if err := replaceProductOptions(c, tx, id, options); err != nil {
@@ -97,7 +106,7 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			apperrors.BadRequest(c, "invalid input")
 			return
 		}
-		if strings.TrimSpace(input.Name) == "" && input.Price == nil && strings.TrimSpace(input.SKU) == "" && input.Description == nil && input.Category == nil && input.Options == nil && input.Specifications == nil {
+		if strings.TrimSpace(input.Name) == "" && input.Price == nil && strings.TrimSpace(input.SKU) == "" && input.Description == nil && input.Category == nil && input.Options == nil && input.Specifications == nil && input.FamilyID == nil {
 			apperrors.BadRequest(c, "at least one editable field is required")
 			return
 		}
@@ -107,8 +116,10 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 		}
 		var beforeName, beforeSKU, beforeDescription, beforeCategory string
 		var beforeSpecificationsRaw []byte
+		var beforeVariantRaw []byte
+		var beforeFamilyID int
 		var beforePrice float64
-		if err := db.Pool.QueryRow(c, "SELECT name, COALESCE(sku, ''), price, description, category, specifications FROM products WHERE id=$1", id).Scan(&beforeName, &beforeSKU, &beforePrice, &beforeDescription, &beforeCategory, &beforeSpecificationsRaw); err != nil {
+		if err := db.Pool.QueryRow(c, "SELECT name, COALESCE(sku, ''), price, description, category, specifications, COALESCE(family_id,0), variant_values FROM products WHERE id=$1", id).Scan(&beforeName, &beforeSKU, &beforePrice, &beforeDescription, &beforeCategory, &beforeSpecificationsRaw, &beforeFamilyID, &beforeVariantRaw); err != nil {
 			handleAdminLookupErr(c, err, "product not found")
 			return
 		}
@@ -154,8 +165,17 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			return
 		}
 		defer tx.Rollback(c)
-		if _, err := tx.Exec(c, "UPDATE products SET name=$1, sku=NULLIF($2, ''), price=$3, description=$4, category=$5, specifications=$6, updated_at=NOW() WHERE id=$7", name, sku, price, description, category, specificationsJSON, id); err != nil {
-			apperrors.Internal(c)
+		familyID, variantJSON := beforeFamilyID, beforeVariantRaw
+		if input.FamilyID != nil {
+			familyID = *input.FamilyID
+			variantJSON, err = familyAssignment(c, tx, familyID, input.VariantValues)
+			if err != nil {
+				handleFamilyWriteError(c, err)
+				return
+			}
+		}
+		if _, err := tx.Exec(c, "UPDATE products SET name=$1, sku=NULLIF($2, ''), price=$3, description=$4, category=$5, specifications=$6, family_id=NULLIF($7,0), variant_values=$8, updated_at=NOW() WHERE id=$9", name, sku, price, description, category, specificationsJSON, familyID, variantJSON, id); err != nil {
+			handleFamilyWriteError(c, err)
 			return
 		}
 		if input.Options != nil {
@@ -175,43 +195,6 @@ func AdminUpdateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 		}
 		_ = writeAudit(c, db, adminActor(c), "product_updated", "product", id, gin.H{"before": gin.H{"name": beforeName, "sku": beforeSKU, "price": beforePrice, "description": beforeDescription, "category": beforeCategory}, "after": gin.H{"name": name, "sku": sku, "price": price, "description": description, "category": category}})
 		logger.Info(logging.EventProductCreated, "event", "product_updated", "product_id", id)
-		item, _ := adminProduct(c, db, id)
-		c.JSON(http.StatusOK, item)
-	}
-}
-
-func AdminUpdateProductStatusHandler(db *database.DB, logger *slog.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id, ok := adminIDParam(c, "id")
-		if !ok {
-			return
-		}
-		var input struct {
-			Active *bool `json:"active"`
-		}
-		if err := c.ShouldBindJSON(&input); err != nil || input.Active == nil {
-			apperrors.BadRequest(c, "active is required")
-			return
-		}
-		var before, archived bool
-		if err := db.Pool.QueryRow(c, "SELECT active,archived_at IS NOT NULL FROM products WHERE id=$1", id).Scan(&before, &archived); err != nil {
-			handleAdminLookupErr(c, err, "product not found")
-			return
-		}
-		if archived && *input.Active {
-			apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, "archived product cannot be activated", nil)
-			return
-		}
-		if _, err := db.Pool.Exec(c, "UPDATE products SET active=$1, updated_at=NOW() WHERE id=$2", *input.Active, id); err != nil {
-			apperrors.Internal(c)
-			return
-		}
-		action := "product_deactivated"
-		if *input.Active {
-			action = "product_activated"
-		}
-		_ = writeAudit(c, db, adminActor(c), action, "product", id, gin.H{"before_active": before, "after_active": *input.Active})
-		logger.Info(logging.EventProductCreated, "event", action, "product_id", id)
 		item, _ := adminProduct(c, db, id)
 		c.JSON(http.StatusOK, item)
 	}
