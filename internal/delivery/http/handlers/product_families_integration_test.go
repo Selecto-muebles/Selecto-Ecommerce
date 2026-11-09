@@ -116,4 +116,90 @@ func TestProductFamiliesPersistAndAppearInStorefrontWithoutChangingPrices(t *tes
 	if seen[firstPublicID] != 49000 || seen[secondPublicID] != 56000 {
 		t.Fatalf("storefront prices: %+v", seen)
 	}
+	command := func(body map[string]any) *httptest.ResponseRecorder {
+		body["id"] = family.ID
+		return request(http.MethodPost, "/admin/product-families", body, AdminCreateProductFamilyHandler(db))
+	}
+	if response := command(map[string]any{"action": "rename", "name": name + " renamed"}); response.Code != http.StatusOK {
+		t.Fatalf("rename: %d %s", response.Code, response.Body.String())
+	}
+	for _, active := range []bool{false, true} {
+		response := command(map[string]any{"action": "status", "active": active})
+		if response.Code != http.StatusOK {
+			t.Fatalf("status: %d %s", response.Code, response.Body.String())
+		}
+		var count int
+		if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM products WHERE family_id=$1 AND active=$2", family.ID, active).Scan(&count); err != nil || count != 2 {
+			t.Fatalf("family status count=%d err=%v", count, err)
+		}
+	}
+	response := command(map[string]any{"action": "stock", "stock": []map[string]any{{"product_id": firstPublicID, "quantity": 11}, {"product_id": utils.EncodeID(2147483000), "quantity": 20}}})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid stock: %d", response.Code)
+	}
+	var stock int
+	if err := pool.QueryRow(ctx, "SELECT stock FROM products WHERE id=$1", created[0]).Scan(&stock); err != nil || stock != 7 {
+		t.Fatalf("partial stock write: stock=%d err=%v", stock, err)
+	}
+	response = command(map[string]any{"action": "stock", "stock": []map[string]any{{"product_id": firstPublicID, "quantity": 11}}})
+	if response.Code != http.StatusOK {
+		t.Fatalf("stock: %d %s", response.Code, response.Body.String())
+	}
+	response = command(map[string]any{"action": "delete"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("archive publication: %d", response.Code)
+	}
+	var archived int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM products WHERE family_id=$1 AND archived_at IS NOT NULL AND NOT active", family.ID).Scan(&archived); err != nil || archived != 2 {
+		t.Fatalf("archived=%d err=%v", archived, err)
+	}
+}
+
+func TestIndividualProductCanBecomePublicationAndAcceptNewVariant(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	db := &database.DB{Pool: pool}
+	name := fmt.Sprintf("Publication lifecycle %d", time.Now().UnixNano())
+	var productID int
+	if err := pool.QueryRow(ctx, "INSERT INTO products(name,sku,price,stock,description,category) VALUES($1,$1,100,5,'Original description','Calistenia') RETURNING id", name).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	var familyID int
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM audit_logs WHERE (entity_type='product_family' AND entity_id=$1) OR (entity_type='product' AND entity_id IN (SELECT id FROM products WHERE family_id=$1))", familyID)
+		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE family_id=$1 OR id=$2", familyID, productID)
+		_, _ = pool.Exec(ctx, "DELETE FROM product_families WHERE id=$1", familyID)
+	})
+	request := func(body any, handler gin.HandlerFunc) *httptest.ResponseRecorder {
+		raw, _ := json.Marshal(body)
+		r := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(r)
+		c.Request = httptest.NewRequest(http.MethodPost, "/admin/product-families", bytes.NewReader(raw))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("email", "test@selecto.test")
+		handler(c)
+		return r
+	}
+	response := request(map[string]any{"action": "group", "product_id": utils.EncodeID(productID), "name": name, "axes": []string{"Modelo"}, "variant_values": map[string]string{"Modelo": "Original"}}, AdminCreateProductFamilyHandler(db))
+	if response.Code != http.StatusOK {
+		t.Fatalf("group: %d %s", response.Code, response.Body.String())
+	}
+	var family productFamily
+	if err := json.Unmarshal(response.Body.Bytes(), &family); err != nil {
+		t.Fatal(err)
+	}
+	familyID = family.ID
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	response = request(map[string]any{"name": name + " Pro", "sku": name + " pro", "price": 150, "stock": 3, "family_id": familyID, "variant_values": map[string]string{"Modelo": "Pro"}}, AdminCreateProductHandler(db, logger))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("new variant: %d %s", response.Code, response.Body.String())
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM products WHERE family_id=$1", familyID).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("members=%d err=%v", count, err)
+	}
+	var description string
+	if err := pool.QueryRow(ctx, "SELECT description FROM products WHERE id=$1", productID).Scan(&description); err != nil || description != "Original description" {
+		t.Fatalf("original data changed: %q %v", description, err)
+	}
 }

@@ -25,6 +25,15 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 		archived := nullableBoolQuery(c, "archived")
 		where := []string{"($1 = '' OR name ILIKE '%' || $1 || '%' OR COALESCE(sku, '') ILIKE '%' || $1 || '%')"}
 		args := []any{q}
+		if raw := c.Query("family_id"); raw != "" {
+			familyID, err := strconv.Atoi(raw)
+			if err != nil || familyID <= 0 {
+				apperrors.BadRequest(c, "invalid family_id")
+				return
+			}
+			args = append(args, familyID)
+			where = append(where, fmt.Sprintf("family_id=$%d", len(args)))
+		}
 		if archived == nil {
 			where = append(where, "archived_at IS NULL")
 		} else if *archived {
