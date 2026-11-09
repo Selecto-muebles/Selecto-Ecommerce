@@ -156,18 +156,19 @@ func AdminListProductFamiliesHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"items": items})
+		c.JSON(http.StatusOK, gin.H{"items": items, "publication_commands": true})
 	}
 }
 
 func AdminCreateProductFamilyHandler(db *database.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input struct {
-			Name string   `json:"name"`
-			Axes []string `json:"axes"`
-		}
+		var input productFamilyCommand
 		if c.ShouldBindJSON(&input) != nil {
 			apperrors.BadRequest(c, "invalid input")
+			return
+		}
+		if input.Action != "" {
+			adminProductFamilyCommand(c, db, input)
 			return
 		}
 		name := strings.TrimSpace(input.Name)
