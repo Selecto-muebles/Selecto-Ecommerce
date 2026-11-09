@@ -103,7 +103,8 @@ func DeleteCategory(ctx context.Context, pool *pgxpool.Pool, id int64, actor str
 		return err
 	}
 	var productCount int
-	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM products WHERE category_id=$1`, id).Scan(&productCount); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM products
+	 WHERE category_id=$1 OR (category_id IS NULL AND LOWER(BTRIM(category))=LOWER(BTRIM($2)))`, id, name).Scan(&productCount); err != nil {
 		return err
 	}
 	if productCount > 0 {
