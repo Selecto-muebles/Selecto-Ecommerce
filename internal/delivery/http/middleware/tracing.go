@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
@@ -10,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
+
+const sampledTraceFlushTimeout = 250 * time.Millisecond
 
 // TraceRequests records only bounded route templates, never request URLs,
 // bodies, headers, customer identifiers, or payment identifiers.
@@ -22,7 +26,19 @@ func TraceRequests() gin.HandlerFunc {
 		parent := otel.GetTextMapPropagator().Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
 		ctx, span := otel.Tracer("selecto-ecommerce/http").Start(parent, c.Request.Method+" HTTP", trace.WithSpanKind(trace.SpanKindServer))
 		c.Request = c.Request.WithContext(ctx)
-		defer span.End()
+		defer func() {
+			span.End()
+			if !span.SpanContext().IsSampled() {
+				return
+			}
+			// Request-based Cloud Run instances have no guaranteed CPU after this
+			// request. Flush sampled spans while the request is still active.
+			if flusher, ok := otel.GetTracerProvider().(interface{ ForceFlush(context.Context) error }); ok {
+				flushCtx, cancel := context.WithTimeout(context.Background(), sampledTraceFlushTimeout)
+				defer cancel()
+				_ = flusher.ForceFlush(flushCtx)
+			}
+		}()
 		c.Next()
 		route := c.FullPath()
 		if route == "" {

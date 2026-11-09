@@ -126,7 +126,7 @@ jobs:
           EXACT_IMAGE: ${{ steps.image.outputs.exact }}
         run: |
           gcloud run services update "${EMAIL_WORKER_SERVICE}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-email-worker,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
-          gcloud run services update "${API_SERVICE}" --image="${EXACT_IMAGE}" --update-env-vars=ADMIN_URL=https://admin.selectosport.com --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
+          gcloud run services update "${API_SERVICE}" --image="${EXACT_IMAGE}" --cpu-throttling --update-env-vars=ADMIN_URL=https://admin.selectosport.com --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
           gcloud run jobs update "${EXPIRATION_JOB}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
           if gcloud run jobs describe "${LOGISTICS_JOB}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
             gcloud run jobs update "${LOGISTICS_JOB}" --image="${EXACT_IMAGE}" --update-labels=application=selecto-ecommerce,source_organization=selecto-muebles --region="${REGION}" --project="${PROJECT_ID}" --quiet
@@ -143,6 +143,7 @@ jobs:
             test "$(gcloud run jobs describe "${LOGISTICS_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(spec.template.spec.template.spec.containers[0].image)')" = "${EXACT_IMAGE}"
           fi
           test "$(gcloud run services describe "${API_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.conditions[0].status)')" = "True"
+          test "$(gcloud run services describe "${API_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format=json | jq -r '.spec.template.metadata.annotations["run.googleapis.com/cpu-throttling"]')" = "true"
           test "$(gcloud run services describe "${EMAIL_WORKER_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.conditions[0].status)')" = "True"
           test -z "$(gcloud run services get-iam-policy "${EMAIL_WORKER_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --flatten='bindings[].members' --filter='bindings.members:allUsers' --format='value(bindings.members)')"
           test "$(gcloud tasks queues describe "${EMAIL_QUEUE}" --location="${REGION}" --project="${PROJECT_ID}" --format='value(state)')" = "RUNNING"
