@@ -26,6 +26,7 @@ const requiredMethods = new Map([
   ["/seo/head", "get"],
   ["/sitemap.xml", "get"],
   ["/admin/categories/{id}", "patch"],
+  ["/admin/categories/{id}", "delete"],
   ["/admin/categories/reorder", "patch"],
   ["/marketing/newsletter/unsubscribe/confirm", "post"],
   ["/communications/brevo/webhook", "post"],

@@ -83,6 +83,16 @@
       "options":{"operationId":"CorsPublicSitemap","responses":{"204":{"description":"Preflight"}}}
     },
     "/admin/categories/{id}": {
+      "delete": {
+        "operationId": "AdminDeleteCategory",
+        "responses": {
+          "204": { "description": "Categoría vacía eliminada" },
+          "409": { "description": "La categoría contiene productos o está vinculada al carrusel" }
+        },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "type": "string" }
+        ]
+      },
       "patch": {
         "operationId": "AdminUpdateCategory",
         "responses": {

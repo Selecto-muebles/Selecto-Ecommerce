@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 
 	"Selecto-Ecommerce/internal/service/catalog"
@@ -10,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrCategoryInUse = errors.New("category is in use")
 
 func ListCategories(ctx context.Context, pool *pgxpool.Pool, public bool, limit, offset int) ([]catalog.Category, error) {
 	rows, err := pool.Query(ctx, `SELECT c.id,c.name,c.slug,c.active,c.sort_order,c.updated_at,
@@ -85,6 +88,43 @@ func UpdateCategory(ctx context.Context, pool *pgxpool.Pool, item catalog.Catego
 		return item, err
 	}
 	return item, tx.Commit(ctx)
+}
+
+// DeleteCategory removes an empty category and records the action in the same
+// transaction. The products FK remains the final guard against concurrent writes.
+func DeleteCategory(ctx context.Context, pool *pgxpool.Pool, id int64, actor string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var name, slug string
+	if err := tx.QueryRow(ctx, `SELECT name,slug FROM categories WHERE id=$1 FOR UPDATE`, id).Scan(&name, &slug); err != nil {
+		return err
+	}
+	var productCount int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM products
+	 WHERE category_id=$1 OR (category_id IS NULL AND LOWER(BTRIM(category))=LOWER(BTRIM($2)))`, id, name).Scan(&productCount); err != nil {
+		return err
+	}
+	if productCount > 0 {
+		return ErrCategoryInUse
+	}
+	var slideCount int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM carousel_slides WHERE category_id=$1`, id).Scan(&slideCount); err != nil {
+		return err
+	}
+	if slideCount > 0 {
+		return ErrCategoryInUse
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM categories WHERE id=$1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO audit_logs(actor_email,action,entity_type,entity_id,metadata)
+	 VALUES ($1,'category_deleted','category',$2,jsonb_build_object('name',$3::text,'slug',$4::text))`, actor, id, name, slug); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func ReorderCategories(ctx context.Context, pool *pgxpool.Pool, ids []int64, actor string) error {

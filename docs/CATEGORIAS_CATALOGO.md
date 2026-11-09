@@ -18,6 +18,13 @@ No cambiar IAM, capacidad de Cloud Run, base de datos ni secretos.
 Rollback de aplicación: la versión anterior puede seguir utilizando category.
 No eliminar la tabla ni ejecutar una migración inversa tras recibir datos nuevos.
 
-Esta entrega incluye alta, listado y selección. Edición/archivo de categorías y
-consumo de slug/ID en Storefront quedan para una entrega posterior; no se anuncian
-como disponibles. Carruseles editoriales, reseñas y KPI siguen pendientes.
+El Admin permite crear, editar y ordenar categorías. `DELETE /admin/categories/{id}`
+solo elimina categorías sin productos y sin referencias del carrusel; responde 409
+si alguno de esos vínculos existe. La eliminación y su registro de auditoría son
+transaccionales. La FK restrictiva de productos sigue siendo la última protección
+frente a escrituras concurrentes. El cliente Admin transforma nombres y enlaces
+escritos con espacios o tildes a slugs válidos antes de enviarlos al API.
+
+Para publicar el borrado, desplegar Ecommerce y activar la configuración nueva de
+API Gateway con el método DELETE antes de desplegar Admin. No requiere migración de
+datos ni altera órdenes, pagos o productos existentes.
