@@ -14,7 +14,7 @@ func RequestBodyLimit(maxBytes int64) gin.HandlerFunc {
 		limit := maxBytes
 		if (c.Request.Method == http.MethodPost && c.FullPath() == "/admin/carousel-slides") ||
 			(c.Request.Method == http.MethodPatch && c.FullPath() == "/admin/carousel-slides/:id") {
-			limit = (2 << 20) + (64 << 10)
+			limit = (2 << 20) + catalogservice.MaxVideoBytes + (64 << 10)
 		}
 		if c.Request.Method == http.MethodPost && c.FullPath() == "/admin/products/:id/images" {
 			limit = catalogservice.MaxVideoBytes + (64 << 10)
