@@ -33,13 +33,13 @@ Guardar/eliminar y registrar auditoría ocurren en una sola transacción. Una fa
 
 ## Promoción manual
 
-1. Primero completar la entrega de videos de productos (Ecommerce #114, Storefront #61, Admin #86). Esta entrega parte de esas ramas.
-2. Revisar y mergear Backend del carrusel; ejecutar su workflow habitual. Se aplica la migración 028 antes de cambiar tráfico. El contrato mantiene las 95 rutas: no necesita otra configuración de Gateway ni cambios de IAM.
+1. Esta entrega incluye el soporte de videos de productos de Ecommerce #114, Storefront #61 y Admin #86; si esas ramas ya se mergearon, sus cambios desaparecen del diff pendiente.
+2. Revisar y mergear Backend del carrusel; ejecutar su workflow habitual. Se aplican las migraciones pendientes 027 y 028 antes de cambiar tráfico. El contrato mantiene las 95 rutas: no necesita otra configuración de Gateway ni cambios de IAM.
 3. Verificar público 200/404 y administrativo 401/403; CORS POST/PATCH/DELETE. No crear datos de prueba en producción.
-4. Merge manual y workflow Admin. Merge manual Storefront sólo después de revisar la vista local: su workflow puede desplegar automáticamente main.
+4. Merge manual y despliegue Storefront, seguido de Admin. Revisar la vista local antes del merge: el workflow de Storefront puede desplegar automáticamente main.
 5. Con sesión administrativa normal, cargar contenido comercial real como borrador, revisar vista previa y publicar. Confirmar destino, móvil, ocultación y recuperación ante fallos. Una suite con mocks no certifica producción.
 
-Rollback: volver a imágenes anteriores y a la API Config previamente capturada. **No ejecutar down ni borrar tabla/migración**, porque las versiones anteriores ignoran la tabla nueva. Storefront mantiene portada habitual si la API editorial no existe, falla o está vacía; Novedades no cambia.
+Rollback: volver a las imágenes de contenedor anteriores; la configuración del Gateway no cambia. **No ejecutar down ni borrar tabla/migración**, porque las versiones anteriores ignoran la tabla nueva. Storefront mantiene portada habitual si la API editorial no existe, falla o está vacía; Novedades no cambia.
 
 ## Pruebas
 
