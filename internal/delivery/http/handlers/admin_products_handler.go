@@ -23,7 +23,7 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 		active := nullableBoolQuery(c, "active")
 		stock := strings.TrimSpace(c.Query("stock"))
 		archived := nullableBoolQuery(c, "archived")
-		where := []string{"($1 = '' OR name ILIKE '%' || $1 || '%' OR COALESCE(sku, '') ILIKE '%' || $1 || '%')"}
+		where := []string{"($1 = '' OR name ILIKE '%' || $1 || '%' OR COALESCE(sku, '') ILIKE '%' || $1 || '%' OR family_id IN (SELECT f.id FROM product_families f WHERE f.name ILIKE '%' || $1 || '%'))"}
 		args := []any{q}
 		if raw := c.Query("family_id"); raw != "" {
 			familyID, err := strconv.Atoi(raw)
@@ -52,13 +52,19 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 			where = append(where, "stock>0")
 		}
 		whereSQL := strings.Join(where, " AND ")
+		countSQL := "SELECT COUNT(*) FROM products WHERE " + whereSQL
+		listSQL := "SELECT id, name, COALESCE(sku, ''), price, stock, active, description, category, specifications, archived_at, created_at, updated_at FROM products WHERE " + whereSQL + " ORDER BY " + adminservice.ProductSort(c.Query("sort")) + " LIMIT $" + strconv.Itoa(len(args)+1) + " OFFSET $" + strconv.Itoa(len(args)+2)
+		grouped := c.Query("group_publications") == "true" && c.Query("family_id") == ""
+		if grouped {
+			countSQL, listSQL = productPublicationQueries(whereSQL, adminservice.ProductSort(c.Query("sort")), len(args), archived)
+		}
 		var total int
-		if err := db.Pool.QueryRow(c, "SELECT COUNT(*) FROM products WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		if err := db.Pool.QueryRow(c, countSQL, args...).Scan(&total); err != nil {
 			apperrors.Internal(c)
 			return
 		}
 		args = append(args, page.PageSize, page.Offset)
-		rows, err := db.Pool.Query(c, "SELECT id, name, COALESCE(sku, ''), price, stock, active, description, category, specifications, archived_at, created_at, updated_at FROM products WHERE "+whereSQL+" ORDER BY "+adminservice.ProductSort(c.Query("sort"))+" LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
+		rows, err := db.Pool.Query(c, listSQL, args...)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -119,7 +125,7 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 				items[index]["options"] = []productOption{}
 			}
 		}
-		c.JSON(http.StatusOK, gin.H{"items": items, "page": page.Page, "page_size": page.PageSize, "total": total})
+		c.JSON(http.StatusOK, gin.H{"items": items, "page": page.Page, "page_size": page.PageSize, "total": total, "group_publications": grouped})
 	}
 }
 

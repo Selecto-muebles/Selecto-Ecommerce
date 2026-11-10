@@ -28,6 +28,7 @@ type adminPage struct{ Page, PageSize, Offset int }
 type adminProductInput struct {
 	Name           string                 `json:"name"`
 	SKU            string                 `json:"sku"`
+	AutoSKU        bool                   `json:"auto_sku"`
 	Price          *float64               `json:"price"`
 	Stock          *int                   `json:"stock"`
 	Active         *bool                  `json:"active"`
@@ -37,6 +38,10 @@ type adminProductInput struct {
 	Specifications *productSpecifications `json:"specifications"`
 	FamilyID       *int                   `json:"family_id"`
 	VariantValues  map[string]string      `json:"variant_values"`
+	Publication    *struct {
+		Name string   `json:"name"`
+		Axes []string `json:"axes"`
+	} `json:"publication"`
 }
 
 func adminPagination(c *gin.Context) adminPage {

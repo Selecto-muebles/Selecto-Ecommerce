@@ -65,20 +65,24 @@ func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			return
 		}
 		defer tx.Rollback(c)
-		familyID := 0
-		if input.FamilyID != nil {
-			familyID = *input.FamilyID
-		}
-		variantJSON, err := familyAssignment(c, tx, familyID, input.VariantValues)
+		familyID, variantJSON, err := assignProductPublication(c, tx, input, adminActor(c))
 		if err != nil {
 			handleFamilyWriteError(c, err)
 			return
 		}
 		var id int
-		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, specifications, family_id, variant_values, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, NULLIF($9,0), $10, NOW()) RETURNING id", strings.TrimSpace(input.Name), strings.TrimSpace(input.SKU), *input.Price, *input.Stock, active, description, category, specificationsJSON, familyID, variantJSON).Scan(&id)
+		sku := strings.TrimSpace(input.SKU)
+		err = tx.QueryRow(c, "INSERT INTO products (name, sku, price, stock, active, description, category, specifications, family_id, variant_values, updated_at) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, NULLIF($9,0), $10, NOW()) RETURNING id", strings.TrimSpace(input.Name), sku, *input.Price, *input.Stock, active, description, category, specificationsJSON, familyID, variantJSON).Scan(&id)
 		if err != nil {
 			handleFamilyWriteError(c, err)
 			return
+		}
+		if input.AutoSKU && sku == "" {
+			sku = "SEL-" + utils.EncodeID(id)
+			if _, err := tx.Exec(c, "UPDATE products SET sku=$1 WHERE id=$2", sku, id); err != nil {
+				apperrors.Internal(c)
+				return
+			}
 		}
 		if err := replaceProductOptions(c, tx, id, options); err != nil {
 			apperrors.Internal(c)
@@ -88,7 +92,7 @@ func AdminCreateProductHandler(db *database.DB, logger *slog.Logger) gin.Handler
 			apperrors.Internal(c)
 			return
 		}
-		_ = writeAudit(c, db, adminActor(c), "product_created", "product", id, gin.H{"name": input.Name, "sku": input.SKU, "price": *input.Price, "stock": *input.Stock, "active": active})
+		_ = writeAudit(c, db, adminActor(c), "product_created", "product", id, gin.H{"name": input.Name, "sku": sku, "price": *input.Price, "stock": *input.Stock, "active": active})
 		logger.Info(logging.EventProductCreated, "product_id", id, "public_id", utils.EncodeID(id), "stock", *input.Stock)
 		item, _ := adminProduct(c, db, id)
 		c.JSON(http.StatusCreated, item)

@@ -93,6 +93,8 @@ jobs:
           workload_identity_provider: projects/101240114732/locations/global/workloadIdentityPools/destry-github/providers/github
           service_account: github-ecommerce@destry-development.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v2
+      - name: Verificar rutas y CORS del catálogo en el Gateway activo
+        run: node scripts/smoke_catalog_gateway.mjs
       - name: Fijar proyecto y comprobar inventario
         run: |
           gcloud config set project "${PROJECT_ID}"
