@@ -162,7 +162,7 @@ func AdminListProductFamiliesHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"items": items, "publication_commands": true, "atomic_publication_create": true, "publication_content_edit": true})
+		c.JSON(http.StatusOK, gin.H{"items": items, "publication_commands": true, "atomic_publication_create": true, "publication_content_edit": true, "product_video_upload": true})
 	}
 }
 

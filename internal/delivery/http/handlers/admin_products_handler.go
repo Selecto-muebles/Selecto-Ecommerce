@@ -102,6 +102,11 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
+		videos, err := productVideosByProduct(c, db, productIDs)
+		if err != nil {
+			apperrors.Internal(c)
+			return
+		}
 		options, err := productOptionsByProduct(c, db, productIDs)
 		if err != nil {
 			apperrors.Internal(c)
@@ -117,6 +122,7 @@ func AdminListProductsHandler(db *database.DB) gin.HandlerFunc {
 				items[index]["family"] = family
 			}
 			items[index]["images"] = images[id]
+			items[index]["videos"] = videos[id]
 			if images[id] == nil {
 				items[index]["images"] = []productImageResponse{}
 			}
@@ -160,6 +166,10 @@ func adminProduct(ctx context.Context, db *database.DB, id int) (gin.H, error) {
 	if err != nil {
 		return nil, err
 	}
+	videos, err := productVideosByProduct(ctx, db, []int{id})
+	if err != nil {
+		return nil, err
+	}
 	options, err := productOptions(ctx, db, id)
 	if err != nil {
 		return nil, err
@@ -172,7 +182,7 @@ func adminProduct(ctx context.Context, db *database.DB, id int) (gin.H, error) {
 	if err != nil {
 		return nil, err
 	}
-	item := gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "specifications": specifications, "archived_at": archivedAt, "images": images, "options": options, "created_at": createdAt, "updated_at": updatedAt}
+	item := gin.H{"id": utils.EncodeID(id), "name": name, "sku": sku, "price": price, "stock": stock, "active": active, "description": description, "category": category, "specifications": specifications, "archived_at": archivedAt, "images": images, "videos": videos[id], "options": options, "created_at": createdAt, "updated_at": updatedAt}
 	if family, ok := families[id]; ok {
 		item["family"] = family
 	}

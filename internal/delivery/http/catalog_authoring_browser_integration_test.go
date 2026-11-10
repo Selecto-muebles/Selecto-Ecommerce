@@ -8,6 +8,7 @@ import (
 	stdhttp "net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -59,7 +60,11 @@ func TestCatalogAuthoringRealBrowser(t *testing.T) {
 		origin = "http://127.0.0.1:5186"
 	}
 	gin.SetMode(gin.ReleaseMode)
-	cfg := &config.Config{AppEnv: "development", JWTSecret: "isolated-catalog-browser-secret-32-characters", JWTTTL: time.Hour, CORSAllowedOrigins: []string{origin}, RateLimitPerMinute: 10000, OrderPendingTTL: 15 * time.Minute, PaymentsRequestTimeout: time.Second, PaymentsServiceURL: "http://127.0.0.1:1", StorefrontURL: origin, AdminURL: origin}
+	origins := []string{origin}
+	if store := os.Getenv("CATALOG_BROWSER_STOREFRONT_URL"); store != "" {
+		origins = append(origins, store)
+	}
+	cfg := &config.Config{AppEnv: "development", JWTSecret: "isolated-catalog-browser-secret-32-characters", JWTTTL: time.Hour, CORSAllowedOrigins: origins, RateLimitPerMinute: 10000, OrderPendingTTL: 15 * time.Minute, PaymentsRequestTimeout: time.Second, PaymentsServiceURL: "http://127.0.0.1:1", StorefrontURL: origin, AdminURL: origin}
 	router := SetupRouter(&database.DB{Pool: pool}, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	listener, err := net.Listen("tcp", "127.0.0.1:18086")
 	if err != nil {
@@ -69,7 +74,8 @@ func TestCatalogAuthoringRealBrowser(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	command := exec.Command("node", runner)
-	command.Env = append(os.Environ(), "CATALOG_BROWSER_API_URL=http://127.0.0.1:18086", "CATALOG_BROWSER_UI_URL="+origin, "CATALOG_BROWSER_EMAIL="+email, "CATALOG_BROWSER_PASSWORD="+password)
+	fixture, _ := filepath.Abs("../../service/catalog/testdata/clip.mp4")
+	command.Env = append(os.Environ(), "CATALOG_BROWSER_API_URL=http://127.0.0.1:18086", "CATALOG_BROWSER_UI_URL="+origin, "CATALOG_BROWSER_EMAIL="+email, "CATALOG_BROWSER_PASSWORD="+password, "CATALOG_BROWSER_VIDEO_FILE="+fixture)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("real browser: %v\n%s", err, output)
