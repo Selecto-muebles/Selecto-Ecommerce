@@ -2,13 +2,14 @@
 
 ## Modelo y límites
 
-- Migración **015**, aditiva y repetible; no modifica datos comerciales existentes.
-- `carousel_slides`: título, descripción, alt, CTA, orden, estado, versión, destino FK a producto o categoría e imagen binaria PNG/JPEG (2 MB máximo).
+- Migración **015** para originales y **028** para multimedia/derivados, aditivas y repetibles; no modifican los datos comerciales existentes.
+- `carousel_slides`: título, descripción, alt, CTA, orden, estado, versión, destino FK a producto o categoría e imagen original PNG/JPEG (2 MB máximo). `carousel_media` conserva derivados responsive de 960/1920 px y un MP4 opcional (H.264, 60 segundos, 20 MB).
 - Máximo 20 registros contando borradores, serializado con advisory lock transaccional. No agrega servicios, buckets, jobs, secretos ni instancias.
-- Es el mismo patrón de almacenamiento binario existente en galerías, acotado a 40 MB de imágenes editoriales por colección. Backups y versiones históricas de PostgreSQL pueden consumir espacio adicional.
-- Sin URLs externas arbitrarias, HTML, SVG, autoplay ni código configurable por el operador.
+- Es el mismo patrón de almacenamiento binario existente en galerías. A los originales se suman derivados y clips opcionales; backups y versiones históricas de PostgreSQL pueden consumir espacio adicional.
+- Sin URLs externas arbitrarias, HTML, SVG ni código configurable por el operador. No rota diapositivas ni reproduce clips al abrir la página: el visitante decide cuándo reproducir.
 - Las bajas de producto/categoría hacen SET NULL: no impiden eliminar un producto ni dejan enlaces públicos rotos. Los destinos inactivos y las categorías sin productos activos se ocultan al leer. Un cambio posterior de disponibilidad no altera la intención de publicación del operador.
-- Las imágenes de borradores requieren autenticación administrativa. Las públicas se sirven sólo mientras diapositiva y destino estén disponibles. `no-store` evita prolongar publicaciones retiradas; no se agregan cachés ni servidores.
+- Los borradores requieren autenticación administrativa. Las rutas públicas comprueban la disponibilidad de diapositiva y destino; la lista usa `no-store`. Las portadas y clips públicos permiten caché de navegador por 60 segundos con ETag; un archivo ya descargado puede permanecer en esa caché durante el minuto. Las vistas privadas usan caché privada y revalidación. No se agrega infraestructura de caché.
+- Los originales se conservan. Los derivados se preparan al cargar una portada y, para registros anteriores, en su primera lectura. Se conservan transparencias y orientación de cámara; la transformación está acotada y serializada por instancia. Los registros anteriores demasiado grandes para transformar conservan su imagen original como respaldo.
 
 ## Contratos
 
@@ -20,7 +21,7 @@
 | `/admin/carousel-slides/{id}` | PATCH, DELETE, OPTIONS | Edición y eliminación con versión |
 | `/admin/carousel-slides/{id}/image` | GET, OPTIONS | Vista previa autenticada, incluso borradores |
 
-POST/PATCH usan multipart con `payload` JSON y archivo `image`. El archivo es obligatorio al crear, opcional al editar. El payload completo es:
+POST/PATCH usan multipart con `payload` JSON y archivo `image`. La portada es obligatoria al crear, opcional al editar. El archivo `video` es opcional; `remove_video: true` permite quitarlo conservando la portada. `GET .../image?w=960` y `?w=1920` sirven derivados; `?media=video` sirve el clip con rangos HTTP 206. Las rutas anteriores sin estos parámetros conservan los originales. El payload básico es:
 
 ```json
 {"title":"Texto real","subtitle":"","alt_text":"Descripción real","cta_label":"Ver producto","target_kind":"product","target_id":"ID_PUBLICO","sort_order":0,"active":false,"version":0}
@@ -32,13 +33,13 @@ Guardar/eliminar y registrar auditoría ocurren en una sola transacción. Una fa
 
 ## Promoción manual
 
-1. Revisar y mergear Backend; ejecutar el workflow existente en main. Migración/auditoría esperan 15 migraciones, 17 tablas y 10 índices auditados.
-2. Comparar el OpenAPI contra el Gateway ACTIVE: mantener las 50 rutas previas y añadir las 5 nuevas (55 en total); backend e IAM sin cambios. Crear configuración inmutable por SHA y activarla manualmente. Guardar el ID ACTIVE anterior para rollback; no borrarlo.
+1. Esta entrega incluye el soporte de videos de productos de Ecommerce #114, Storefront #61 y Admin #86; si esas ramas ya se mergearon, sus cambios desaparecen del diff pendiente.
+2. Revisar y mergear Backend del carrusel; ejecutar su workflow habitual. Se aplican las migraciones pendientes 027 y 028 antes de cambiar tráfico. El contrato mantiene las 95 rutas: no necesita otra configuración de Gateway ni cambios de IAM.
 3. Verificar público 200/404 y administrativo 401/403; CORS POST/PATCH/DELETE. No crear datos de prueba en producción.
-4. Merge manual y workflow Admin. Merge manual Storefront sólo después de revisar la vista local: su workflow puede desplegar automáticamente main.
+4. Merge manual y despliegue Storefront, seguido de Admin. Revisar la vista local antes del merge: el workflow de Storefront puede desplegar automáticamente main.
 5. Con sesión administrativa normal, cargar contenido comercial real como borrador, revisar vista previa y publicar. Confirmar destino, móvil, ocultación y recuperación ante fallos. Una suite con mocks no certifica producción.
 
-Rollback: volver a imágenes anteriores y a la API Config previamente capturada. **No ejecutar down ni borrar tabla/migración**, porque las versiones anteriores ignoran la tabla nueva. Storefront mantiene portada habitual si la API editorial no existe, falla o está vacía; Novedades no cambia.
+Rollback: volver a las imágenes de contenedor anteriores; la configuración del Gateway no cambia. **No ejecutar down ni borrar tabla/migración**, porque las versiones anteriores ignoran la tabla nueva. Storefront mantiene portada habitual si la API editorial no existe, falla o está vacía; Novedades no cambia.
 
 ## Pruebas
 

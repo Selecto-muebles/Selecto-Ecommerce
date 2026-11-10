@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
+	"Selecto-Ecommerce/internal/service/catalog"
 	"Selecto-Ecommerce/internal/service/editorial"
 	"Selecto-Ecommerce/internal/shared/apperrors"
 	"github.com/gin-gonic/gin"
@@ -20,7 +25,7 @@ func ListCarouselHandler(store editorial.Store, public bool) gin.HandlerFunc {
 			return
 		}
 		c.Header("Cache-Control", "no-store")
-		c.JSON(http.StatusOK, gin.H{"items": items})
+		c.JSON(http.StatusOK, gin.H{"items": items, "carousel_media": true})
 	}
 }
 
@@ -34,7 +39,9 @@ func SaveCarouselHandler(store editorial.Store, create bool) gin.HandlerFunc {
 				return
 			}
 		}
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, editorial.MaxImageBytes+(64<<10))
+		_ = http.NewResponseController(c.Writer).SetReadDeadline(time.Now().Add(90 * time.Second))
+		_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(100 * time.Second))
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, editorial.MaxImageBytes+catalog.MaxVideoBytes+(64<<10))
 		if err := c.Request.ParseMultipartForm(editorial.MaxImageBytes + (64 << 10)); err != nil {
 			carouselError(c, editorial.ErrInvalid)
 			return
@@ -50,7 +57,8 @@ func SaveCarouselHandler(store editorial.Store, create bool) gin.HandlerFunc {
 		if err == nil {
 			defer file.Close()
 			content, err := io.ReadAll(io.LimitReader(file, editorial.MaxImageBytes+1))
-			if err != nil {
+			_ = file.Close()
+			if err != nil || len(content) == 0 {
 				carouselError(c, editorial.ErrInvalid)
 				return
 			}
@@ -59,6 +67,25 @@ func SaveCarouselHandler(store editorial.Store, create bool) gin.HandlerFunc {
 			carouselError(c, editorial.ErrInvalid)
 			return
 		}
+		video, _, videoErr := c.Request.FormFile("video")
+		if videoErr == nil {
+			defer video.Close()
+			data, err := io.ReadAll(io.LimitReader(video, catalog.MaxVideoBytes+1))
+			_ = video.Close()
+			if err != nil || len(data) == 0 || len(data) > catalog.MaxVideoBytes {
+				carouselError(c, editorial.ErrInvalid)
+				return
+			}
+			if img == nil {
+				img = &editorial.Image{}
+			}
+			img.Video = data
+		} else if !errors.Is(videoErr, http.ErrMissingFile) {
+			carouselError(c, editorial.ErrInvalid)
+			return
+		}
+		// Free multipart temp storage before decoding/resizing the poster.
+		_ = c.Request.MultipartForm.RemoveAll()
 		saved, err := editorial.Save(c, store, id, in, img, adminActor(c))
 		if err != nil {
 			carouselError(c, err)
@@ -93,18 +120,57 @@ func DeleteCarouselHandler(store editorial.Store) gin.HandlerFunc {
 
 func CarouselImageHandler(store editorial.Store, public bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
 		id, ok := carouselID(c)
 		if !ok {
 			return
 		}
-		img, err := store.Image(c, id, public)
+		cache := "private, no-cache, must-revalidate"
+		if public {
+			cache = "public, max-age=60, must-revalidate"
+		}
+		c.Header("X-Content-Type-Options", "nosniff")
+		if c.Query("media") == "video" {
+			media, ok := store.(editorial.MediaStore)
+			if !ok {
+				carouselError(c, editorial.ErrNotFound)
+				return
+			}
+			clip, err := media.Video(c, id, public)
+			if err != nil {
+				carouselError(c, err)
+				return
+			}
+			c.Header("Cache-Control", cache)
+			c.Header("Content-Type", "video/mp4")
+			c.Header("ETag", fmt.Sprintf(`"carousel-video-%d-%d"`, id, clip.Version))
+			http.ServeContent(c.Writer, c.Request, "banner.mp4", time.Time{}, clip.Content)
+			return
+		}
+		width := 0
+		if raw := c.Query("w"); raw != "" {
+			width, _ = strconv.Atoi(raw)
+			if width != 960 && width != 1920 {
+				carouselError(c, editorial.ErrInvalid)
+				return
+			}
+		}
+		var img editorial.Image
+		var err error
+		if media, ok := store.(editorial.MediaStore); ok && width > 0 {
+			img, err = media.VariantImage(c, id, public, width)
+		} else {
+			img, err = store.Image(c, id, public)
+		}
 		if err != nil {
 			carouselError(c, err)
 			return
 		}
-		c.Header("Cache-Control", "no-store")
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Data(http.StatusOK, img.MIME, img.Content)
+		c.Header("Cache-Control", cache)
+		c.Header("Content-Type", img.MIME)
+		digest := sha256.Sum256(img.Content)
+		c.Header("ETag", fmt.Sprintf(`"carousel-%d-%x"`, id, digest[:12]))
+		http.ServeContent(c.Writer, c.Request, "banner", time.Time{}, bytes.NewReader(img.Content))
 	}
 }
 
@@ -120,7 +186,7 @@ func carouselID(c *gin.Context) (int, bool) {
 func carouselError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, editorial.ErrInvalid):
-		apperrors.BadRequest(c, "invalid carousel: check fields and PNG/JPEG image (maximum 2 MB)")
+		apperrors.BadRequest(c, "Revisá los campos y la portada PNG/JPEG (hasta 2 MB y 16 megapíxeles). El video debe ser MP4 H.264, hasta 60 segundos y 20 MB")
 	case errors.Is(err, editorial.ErrConflict):
 		apperrors.JSON(c, http.StatusConflict, apperrors.CodeConflict, err.Error(), nil)
 	case errors.Is(err, editorial.ErrNotFound):

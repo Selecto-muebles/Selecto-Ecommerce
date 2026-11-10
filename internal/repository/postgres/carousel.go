@@ -13,13 +13,13 @@ import (
 type CarouselStore struct{ Pool *pgxpool.Pool }
 
 const carouselJoins = ` FROM carousel_slides s LEFT JOIN products p ON p.id=s.product_id LEFT JOIN categories c ON c.id=s.category_id `
-const carouselAvailable = `((s.target_kind='product' AND COALESCE(p.active,FALSE)) OR
- (s.target_kind='category' AND COALESCE(c.active,FALSE) AND EXISTS(SELECT 1 FROM products cp WHERE cp.category_id=c.id AND cp.active)))`
+const carouselAvailable = `((s.target_kind='product' AND COALESCE(p.active,FALSE) AND p.archived_at IS NULL) OR
+ (s.target_kind='category' AND COALESCE(c.active,FALSE) AND EXISTS(SELECT 1 FROM products cp WHERE cp.category_id=c.id AND cp.active AND cp.archived_at IS NULL)))`
 
 func (r CarouselStore) List(ctx context.Context, public bool) ([]editorial.Slide, error) {
 	rows, err := r.Pool.Query(ctx, `SELECT s.id,s.title,s.subtitle,s.alt_text,s.cta_label,s.target_kind,
  COALESCE(s.product_id,s.category_id,0),s.sort_order,s.active,s.version,`+carouselAvailable+`,
- COALESCE(p.name,c.name,''),COALESCE(c.slug,'')`+carouselJoins+`WHERE NOT $1 OR (s.active AND `+carouselAvailable+`) ORDER BY s.sort_order,s.id LIMIT 20`, public)
+ COALESCE(p.name,c.name,''),COALESCE(c.slug,''),EXISTS(SELECT 1 FROM carousel_media m WHERE m.slide_id=s.id AND m.video_content IS NOT NULL)`+carouselJoins+`WHERE NOT $1 OR (s.active AND `+carouselAvailable+`) ORDER BY s.sort_order,s.id LIMIT 20`, public)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func (r CarouselStore) List(ctx context.Context, public bool) ([]editorial.Slide
 		var s editorial.Slide
 		var target int
 		var categorySlug string
-		if err := rows.Scan(&s.ID, &s.Title, &s.Subtitle, &s.AltText, &s.CTALabel, &s.TargetKind, &target, &s.SortOrder, &s.Active, &s.Version, &s.DestinationAvailable, &s.DestinationName, &categorySlug); err != nil {
+		if err := rows.Scan(&s.ID, &s.Title, &s.Subtitle, &s.AltText, &s.CTALabel, &s.TargetKind, &target, &s.SortOrder, &s.Active, &s.Version, &s.DestinationAvailable, &s.DestinationName, &categorySlug, &s.HasVideo); err != nil {
 			return nil, err
 		}
 		if target > 0 {
@@ -50,7 +50,7 @@ func (r CarouselStore) List(ctx context.Context, public bool) ([]editorial.Slide
 
 func (r CarouselStore) Image(ctx context.Context, id int, public bool) (editorial.Image, error) {
 	var img editorial.Image
-	err := r.Pool.QueryRow(ctx, `SELECT s.content,s.mime_type`+carouselJoins+`WHERE s.id=$1 AND (NOT $2 OR (s.active AND `+carouselAvailable+`))`, id, public).Scan(&img.Content, &img.MIME)
+	err := r.Pool.QueryRow(ctx, `SELECT s.content,s.mime_type,s.version`+carouselJoins+`WHERE s.id=$1 AND (NOT $2 OR (s.active AND `+carouselAvailable+`))`, id, public).Scan(&img.Content, &img.MIME, &img.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = editorial.ErrNotFound
 	}
@@ -87,9 +87,9 @@ func (r CarouselStore) Save(ctx context.Context, id int, in editorial.Input, tar
 		}
 	}
 	// Lock the target while publishing. Public queries re-check availability on every request.
-	query := "SELECT active FROM products WHERE id=$1 FOR SHARE"
+	query := "SELECT active AND archived_at IS NULL FROM products WHERE id=$1 FOR SHARE"
 	if in.TargetKind == "category" {
-		query = "SELECT active AND EXISTS(SELECT 1 FROM products WHERE category_id=$1 AND active) FROM categories WHERE id=$1 FOR SHARE"
+		query = "SELECT active AND EXISTS(SELECT 1 FROM products WHERE category_id=$1 AND active AND archived_at IS NULL) FROM categories WHERE id=$1 FOR SHARE"
 	}
 	var available bool
 	if err = tx.QueryRow(ctx, query, target).Scan(&available); errors.Is(err, pgx.ErrNoRows) {
@@ -119,6 +119,9 @@ func (r CarouselStore) Save(ctx context.Context, id int, in editorial.Input, tar
    content=COALESCE($11,content),mime_type=CASE WHEN $11::bytea IS NULL THEN mime_type ELSE $12 END,version=version+1,updated_at=NOW() WHERE id=$1`, id, in.Title, in.Subtitle, in.AltText, in.CTALabel, in.TargetKind, productID, categoryID, in.SortOrder, in.Active, content, mime)
 	}
 	if err != nil {
+		return 0, err
+	}
+	if err = saveCarouselMedia(ctx, tx, id, in, img); err != nil {
 		return 0, err
 	}
 	if err = carouselAudit(ctx, tx, actor, id, "carousel_saved", in.Version); err != nil {

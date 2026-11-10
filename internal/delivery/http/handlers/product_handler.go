@@ -27,6 +27,7 @@ type ProductResponse struct {
 	Category       string                 `json:"category"`
 	CategorySlug   string                 `json:"category_slug"`
 	Images         []productImageResponse `json:"images"`
+	Videos         []productImageResponse `json:"videos,omitempty"`
 	Options        []productOption        `json:"options"`
 	Specifications productSpecifications  `json:"specifications"`
 	ReviewSummary  productReviewSummary   `json:"review_summary"`
@@ -79,6 +80,10 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 	if err != nil {
 		return nil, err
 	}
+	videosByProduct, err := productVideosByProduct(c, db, productIDs)
+	if err != nil {
+		return nil, err
+	}
 	optionsByProduct, err := productOptionsByProduct(c, db, productIDs)
 	if err != nil {
 		return nil, err
@@ -96,6 +101,7 @@ func fetchActiveProducts(c *gin.Context, db *database.DB) ([]ProductResponse, er
 			products[index].Family = &family
 		}
 		products[index].Images = imagesByProduct[id]
+		products[index].Videos = videosByProduct[id]
 		if products[index].Images == nil {
 			products[index].Images = []productImageResponse{}
 		}

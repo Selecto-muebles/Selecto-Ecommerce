@@ -7,11 +7,13 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	catalogservice "Selecto-Ecommerce/internal/service/catalog"
 	"Selecto-Ecommerce/internal/shared/utils"
 )
 
@@ -23,15 +25,16 @@ var ErrConflict = errors.New("carousel changed, limit reached or destination una
 var ErrNotFound = errors.New("carousel slide not found")
 
 type Input struct {
-	Title      string `json:"title"`
-	Subtitle   string `json:"subtitle"`
-	AltText    string `json:"alt_text"`
-	CTALabel   string `json:"cta_label"`
-	TargetKind string `json:"target_kind"`
-	TargetID   string `json:"target_id"`
-	SortOrder  int    `json:"sort_order"`
-	Active     bool   `json:"active"`
-	Version    int    `json:"version"`
+	Title       string `json:"title"`
+	Subtitle    string `json:"subtitle"`
+	AltText     string `json:"alt_text"`
+	CTALabel    string `json:"cta_label"`
+	TargetKind  string `json:"target_kind"`
+	TargetID    string `json:"target_id"`
+	SortOrder   int    `json:"sort_order"`
+	Active      bool   `json:"active"`
+	Version     int    `json:"version"`
+	RemoveVideo bool   `json:"remove_video,omitempty"`
 }
 
 type Slide struct {
@@ -41,11 +44,24 @@ type Slide struct {
 	DestinationName      string `json:"destination_name"`
 	Href                 string `json:"href"`
 	ImageURL             string `json:"image_url"`
+	HasVideo             bool   `json:"has_video,omitempty"`
 }
 
 type Image struct {
-	Content []byte
-	MIME    string
+	Content      []byte
+	MIME         string
+	Small, Large Rendition
+	Video        []byte
+	Version      int
+}
+
+type Clip struct {
+	Content io.ReadSeeker
+	Version int
+}
+type MediaStore interface {
+	VariantImage(context.Context, int, bool, int) (Image, error)
+	Video(context.Context, int, bool) (Clip, error)
 }
 
 type Store interface {
@@ -74,10 +90,10 @@ func Save(ctx context.Context, store Store, id int, in Input, img *Image, actor 
 	if err != nil || target <= 0 {
 		return 0, ErrInvalid
 	}
-	if id == 0 && img == nil {
+	if id == 0 && (img == nil || len(img.Content) == 0) {
 		return 0, ErrInvalid
 	}
-	if img != nil {
+	if img != nil && len(img.Content) > 0 {
 		if len(img.Content) == 0 || len(img.Content) > MaxImageBytes {
 			return 0, ErrInvalid
 		}
@@ -86,6 +102,14 @@ func Save(ctx context.Context, store Store, id int, in Input, img *Image, actor 
 			return 0, ErrInvalid
 		}
 		img.MIME = "image/" + format
+		if err := PreparePoster(img); err != nil {
+			return 0, err
+		}
+	}
+	if img != nil && len(img.Video) > 0 {
+		if in.RemoveVideo || catalogservice.ValidateProductVideo(img.Video) != nil {
+			return 0, ErrInvalid
+		}
 	}
 	return store.Save(ctx, id, in, target, img, actor)
 }

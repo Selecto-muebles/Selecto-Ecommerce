@@ -1,13 +1,14 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	catalogservice "Selecto-Ecommerce/internal/service/catalog"
@@ -130,14 +131,16 @@ func replaceProductOptions(ctx context.Context, tx pgx.Tx, productID int, option
 
 func ProductImageHandler(db *database.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := utils.DecodeID(c.Param("id"))
+		id, table, err := productMediaIdentity(c.Param("id"))
 		if err != nil || id <= 0 {
 			apperrors.BadRequest(c, "invalid image id")
 			return
 		}
 		var mimeType string
 		var content []byte
-		if err := db.Pool.QueryRow(c, `SELECT mime_type, content FROM product_images WHERE id=$1`, id).Scan(&mimeType, &content); err != nil {
+		var size int
+		var created time.Time
+		if err := db.Pool.QueryRow(c, fmt.Sprintf(`SELECT mime_type,CASE WHEN mime_type='video/mp4' THEN NULL ELSE content END,size_bytes,created_at FROM %s WHERE id=$1`, table), id).Scan(&mimeType, &content, &size, &created); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "image not found", nil)
 				return
@@ -146,6 +149,10 @@ func ProductImageHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		c.Header("Cache-Control", "public, max-age=86400, immutable")
+		if mimeType == "video/mp4" {
+			serveProductVideo(c, db, id, size, created)
+			return
+		}
 		c.Data(http.StatusOK, mimeType, content)
 	}
 }
@@ -156,28 +163,33 @@ func AdminUploadProductImageHandler(db *database.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		// Relax only an authenticated media upload, not ordinary API requests.
+		_ = http.NewResponseController(c.Writer).SetReadDeadline(time.Now().Add(90 * time.Second))
+		_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(100 * time.Second))
 		if err := c.Request.ParseMultipartForm(maxProductImageBytes); err != nil {
 			apperrors.BadRequest(c, "invalid image upload")
 			return
 		}
+		defer c.Request.MultipartForm.RemoveAll()
 		file, header, err := c.Request.FormFile("image")
 		if err != nil {
 			apperrors.BadRequest(c, "image is required")
 			return
 		}
 		defer file.Close()
-		content, err := io.ReadAll(io.LimitReader(file, maxProductImageBytes+1))
-		if err != nil || len(content) == 0 || len(content) > maxProductImageBytes {
-			apperrors.BadRequest(c, "image must be between 1 byte and 5 MB")
+		content, err := io.ReadAll(io.LimitReader(file, catalogservice.MaxVideoBytes+1))
+		if err != nil || len(content) == 0 || len(content) > catalogservice.MaxVideoBytes {
+			apperrors.BadRequest(c, "El archivo está vacío o supera los 20 MB")
 			return
 		}
 		mimeType := http.DetectContentType(content)
-		if mimeType != "image/jpeg" && mimeType != "image/png" && mimeType != "image/webp" {
-			apperrors.BadRequest(c, "image must be JPEG, PNG or WebP")
-			return
-		}
-		if _, err := io.Copy(io.Discard, bytes.NewReader(content)); err != nil {
-			apperrors.Internal(c)
+		if mimeType == "video/mp4" {
+			if err := catalogservice.ValidateProductVideo(content); err != nil {
+				apperrors.BadRequest(c, err.Error())
+				return
+			}
+		} else if (mimeType != "image/jpeg" && mimeType != "image/png" && mimeType != "image/webp") || len(content) > maxProductImageBytes {
+			apperrors.BadRequest(c, "Las fotos deben ser JPEG, PNG o WebP de hasta 5 MB. Los videos, MP4 H.264 de hasta 60 segundos y 20 MB")
 			return
 		}
 		altText := strings.TrimSpace(c.PostForm("alt_text"))
@@ -194,11 +206,19 @@ func AdminUploadProductImageHandler(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		var id int
-		if err := db.Pool.QueryRow(c, `INSERT INTO product_images (product_id,mime_type,alt_text,sort_order,content,size_bytes) VALUES ($1,$2,$3,COALESCE((SELECT MAX(sort_order)+1 FROM product_images WHERE product_id=$1),0),$4,$5) RETURNING id`, productID, mimeType, altText, content, len(content)).Scan(&id); err != nil {
+		table := "product_images"
+		if mimeType == "video/mp4" {
+			table = "product_videos"
+		}
+		if err := db.Pool.QueryRow(c, fmt.Sprintf(`INSERT INTO %s (product_id,mime_type,alt_text,sort_order,content,size_bytes) VALUES ($1,$2,$3,GREATEST(COALESCE((SELECT MAX(sort_order) FROM product_images WHERE product_id=$1),-1),COALESCE((SELECT MAX(sort_order) FROM product_videos WHERE product_id=$1),-1))+1,$4,$5) RETURNING id`, table), productID, mimeType, altText, content, len(content)).Scan(&id); err != nil {
 			apperrors.Internal(c)
 			return
 		}
-		_ = writeAudit(c, db, adminActor(c), "product_image_uploaded", "product", productID, gin.H{"image_id": utils.EncodeID(id), "size_bytes": len(content), "mime_type": mimeType})
+		mediaID := utils.EncodeID(id)
+		if mimeType == "video/mp4" {
+			mediaID = "video-" + mediaID
+		}
+		_ = writeAudit(c, db, adminActor(c), "product_image_uploaded", "product", productID, gin.H{"image_id": mediaID, "size_bytes": len(content), "mime_type": mimeType})
 		images, _ := productImages(c, db, productID)
 		c.JSON(http.StatusCreated, images)
 	}
@@ -210,7 +230,7 @@ func AdminUpdateProductImageHandler(db *database.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		imageID, err := utils.DecodeID(c.Param("image_id"))
+		imageID, table, err := productMediaIdentity(c.Param("image_id"))
 		if err != nil || imageID <= 0 {
 			apperrors.BadRequest(c, "invalid image id")
 			return
@@ -229,7 +249,7 @@ func AdminUpdateProductImageHandler(db *database.DB) gin.HandlerFunc {
 		}
 		alt := ""
 		order := 0
-		if err := db.Pool.QueryRow(c, `SELECT alt_text,sort_order FROM product_images WHERE id=$1 AND product_id=$2`, imageID, productID).Scan(&alt, &order); err != nil {
+		if err := db.Pool.QueryRow(c, fmt.Sprintf(`SELECT alt_text,sort_order FROM %s WHERE id=$1 AND product_id=$2`, table), imageID, productID).Scan(&alt, &order); err != nil {
 			handleAdminLookupErr(c, err, "image not found")
 			return
 		}
@@ -243,7 +263,7 @@ func AdminUpdateProductImageHandler(db *database.DB) gin.HandlerFunc {
 		if input.SortOrder != nil {
 			order = *input.SortOrder
 		}
-		if _, err := db.Pool.Exec(c, `UPDATE product_images SET alt_text=$1,sort_order=$2 WHERE id=$3 AND product_id=$4`, alt, order, imageID, productID); err != nil {
+		if _, err := db.Pool.Exec(c, fmt.Sprintf(`UPDATE %s SET alt_text=$1,sort_order=$2 WHERE id=$3 AND product_id=$4`, table), alt, order, imageID, productID); err != nil {
 			apperrors.Internal(c)
 			return
 		}
@@ -258,12 +278,12 @@ func AdminDeleteProductImageHandler(db *database.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		imageID, err := utils.DecodeID(c.Param("image_id"))
+		imageID, table, err := productMediaIdentity(c.Param("image_id"))
 		if err != nil || imageID <= 0 {
 			apperrors.BadRequest(c, "invalid image id")
 			return
 		}
-		command, err := db.Pool.Exec(c, `DELETE FROM product_images WHERE id=$1 AND product_id=$2`, imageID, productID)
+		command, err := db.Pool.Exec(c, fmt.Sprintf(`DELETE FROM %s WHERE id=$1 AND product_id=$2`, table), imageID, productID)
 		if err != nil {
 			apperrors.Internal(c)
 			return
@@ -272,7 +292,7 @@ func AdminDeleteProductImageHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "image not found", nil)
 			return
 		}
-		_ = writeAudit(c, db, adminActor(c), "product_image_deleted", "product", productID, gin.H{"image_id": utils.EncodeID(imageID)})
+		_ = writeAudit(c, db, adminActor(c), "product_image_deleted", "product", productID, gin.H{"image_id": c.Param("image_id")})
 		c.Status(http.StatusNoContent)
 	}
 }
