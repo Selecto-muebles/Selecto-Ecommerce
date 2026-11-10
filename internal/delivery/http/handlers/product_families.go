@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"Selecto-Ecommerce/internal/infrastructure/database"
 	"Selecto-Ecommerce/internal/shared/apperrors"
@@ -25,6 +26,11 @@ type productFamily struct {
 var errInvalidFamily = errors.New("invalid product family or variant values")
 var errDuplicateVariant = errors.New("this combination already exists in the family")
 
+func validFamilyName(name string) bool {
+	length := utf8.RuneCountInString(name)
+	return length >= 2 && length <= 120
+}
+
 func normalizeFamilyAxes(axes []string) ([]string, error) {
 	if len(axes) < 1 || len(axes) > 3 {
 		return nil, errInvalidFamily
@@ -34,7 +40,7 @@ func normalizeFamilyAxes(axes []string) ([]string, error) {
 	for _, axis := range axes {
 		axis = strings.TrimSpace(axis)
 		key := strings.ToLower(axis)
-		if len(axis) < 2 || len(axis) > 40 || seen[key] {
+		if utf8.RuneCountInString(axis) < 2 || utf8.RuneCountInString(axis) > 40 || seen[key] {
 			return nil, errInvalidFamily
 		}
 		seen[key] = true
@@ -50,7 +56,7 @@ func validateVariantValues(axes []string, values map[string]string) (map[string]
 	result := make(map[string]string, len(axes))
 	for _, axis := range axes {
 		value := strings.TrimSpace(values[axis])
-		if len(value) < 1 || len(value) > 80 {
+		if utf8.RuneCountInString(value) < 1 || utf8.RuneCountInString(value) > 80 {
 			return nil, errInvalidFamily
 		}
 		result[axis] = value
@@ -156,7 +162,7 @@ func AdminListProductFamiliesHandler(db *database.DB) gin.HandlerFunc {
 			apperrors.Internal(c)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"items": items, "publication_commands": true})
+		c.JSON(http.StatusOK, gin.H{"items": items, "publication_commands": true, "atomic_publication_create": true, "publication_content_edit": true})
 	}
 }
 
@@ -173,7 +179,7 @@ func AdminCreateProductFamilyHandler(db *database.DB) gin.HandlerFunc {
 		}
 		name := strings.TrimSpace(input.Name)
 		axes, err := normalizeFamilyAxes(input.Axes)
-		if len(name) < 2 || len(name) > 120 || err != nil {
+		if !validFamilyName(name) || err != nil {
 			apperrors.BadRequest(c, errInvalidFamily.Error())
 			return
 		}

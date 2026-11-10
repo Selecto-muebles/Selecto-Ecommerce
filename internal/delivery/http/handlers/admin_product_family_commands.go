@@ -12,14 +12,18 @@ import (
 )
 
 type productFamilyCommand struct {
-	Action    string            `json:"action"`
-	ID        int               `json:"id"`
-	Name      string            `json:"name"`
-	Axes      []string          `json:"axes"`
-	Active    *bool             `json:"active"`
-	ProductID string            `json:"product_id"`
-	Values    map[string]string `json:"variant_values"`
-	Stock     []struct {
+	Action               string                 `json:"action"`
+	ID                   int                    `json:"id"`
+	Name                 string                 `json:"name"`
+	Axes                 []string               `json:"axes"`
+	Active               *bool                  `json:"active"`
+	ProductID            string                 `json:"product_id"`
+	Values               map[string]string      `json:"variant_values"`
+	Category             *string                `json:"category"`
+	Description          *string                `json:"description"`
+	Specifications       *productSpecifications `json:"specifications"`
+	RemoveSpecifications []string               `json:"remove_specifications"`
+	Stock                []struct {
 		ProductID string `json:"product_id"`
 		Quantity  int    `json:"quantity"`
 	} `json:"stock"`
@@ -38,7 +42,7 @@ func adminProductFamilyCommand(c *gin.Context, db *database.DB, input productFam
 	if input.Action == "group" {
 		family.Name = strings.TrimSpace(input.Name)
 		family.Axes, err = normalizeFamilyAxes(input.Axes)
-		if err != nil || len(family.Name) < 2 || len(family.Name) > 120 {
+		if err != nil || !validFamilyName(family.Name) {
 			apperrors.BadRequest(c, "invalid publication name or attributes")
 			return
 		}
@@ -80,11 +84,14 @@ func adminProductFamilyCommand(c *gin.Context, db *database.DB, input productFam
 		switch input.Action {
 		case "rename":
 			family.Name = strings.TrimSpace(input.Name)
-			if len(family.Name) < 2 || len(family.Name) > 120 {
+			if !validFamilyName(family.Name) {
 				apperrors.BadRequest(c, "invalid publication name")
 				return
 			}
 			_, err = tx.Exec(c, "UPDATE product_families SET name=$1 WHERE id=$2", family.Name, input.ID)
+			if err == nil {
+				err = updatePublicationContent(c, tx, input)
+			}
 		case "status":
 			if input.Active == nil {
 				apperrors.BadRequest(c, "active is required")
@@ -123,7 +130,7 @@ func adminProductFamilyCommand(c *gin.Context, db *database.DB, input productFam
 			return
 		}
 	}
-	if err = writeAuditTx(c, tx, adminActor(c), "product_family_"+input.Action, "product_family", family.ID, gin.H{"name": family.Name, "active": input.Active, "stock": input.Stock}); err != nil {
+	if err = writeAuditTx(c, tx, adminActor(c), "product_family_"+input.Action, "product_family", family.ID, gin.H{"name": family.Name, "active": input.Active, "stock": input.Stock, "common_fields": gin.H{"category": input.Category != nil, "description": input.Description != nil, "specifications": input.Specifications != nil}}); err != nil {
 		apperrors.Internal(c)
 		return
 	}
