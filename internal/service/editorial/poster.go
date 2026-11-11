@@ -20,21 +20,43 @@ var posterTransform sync.Mutex
 // Derivatives are generated once, not at every page view. Preserve originals
 // and transparency; never enlarge small artwork or replace a smaller original.
 func PreparePoster(img *Image) error {
+	variants, mime, err := prepareRenditions(img.Content, 960, 1920)
+	if err != nil {
+		return err
+	}
+	img.MIME, img.Small, img.Large = mime, variants[0], variants[1]
+	return nil
+}
+
+// PrepareRendition uses the same bounded, orientation-aware image processing as
+// editorial covers. The caller retains the original bytes unchanged.
+func PrepareRendition(content []byte, width int) (Rendition, error) {
+	if width < 1 || width > 1920 {
+		return Rendition{}, ErrInvalid
+	}
+	variants, _, err := prepareRenditions(content, width)
+	if err != nil {
+		return Rendition{}, err
+	}
+	return variants[0], nil
+}
+
+func prepareRenditions(content []byte, widths ...int) ([]Rendition, string, error) {
 	posterTransform.Lock()
 	defer posterTransform.Unlock()
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(img.Content))
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(content))
 	if err != nil || (format != "jpeg" && format != "png") || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > 16000000 {
-		return ErrInvalid
+		return nil, "", ErrInvalid
 	}
-	source, _, err := image.Decode(bytes.NewReader(img.Content))
+	source, _, err := image.Decode(bytes.NewReader(content))
 	if err != nil {
-		return ErrInvalid
+		return nil, "", ErrInvalid
 	}
-	if orientation := posterOrientation(img.Content); orientation != 1 {
+	if orientation := posterOrientation(content); orientation != 1 {
 		source = orientedPoster{source, orientation}
 		cfg.Width, cfg.Height = source.Bounds().Dx(), source.Bounds().Dy()
 	}
-	img.MIME = "image/" + format
+	mime := "image/" + format
 	makeSize := func(maxWidth int) (Rendition, error) {
 		w := min(cfg.Width, maxWidth)
 		h := max(1, cfg.Height*w/cfg.Width)
@@ -60,17 +82,20 @@ func PreparePoster(img *Image) error {
 				result = Rendition{pngData.Bytes(), "image/png"}
 			}
 		}
-		if cfg.Width == w && cfg.Height == h && len(img.Content) < len(result.Content) {
-			result = Rendition{img.Content, img.MIME}
+		if cfg.Width == w && cfg.Height == h && len(content) < len(result.Content) {
+			result = Rendition{content, mime}
 		}
 		return result, nil
 	}
-	img.Small, err = makeSize(960)
-	if err != nil {
-		return err
+	variants := make([]Rendition, 0, len(widths))
+	for _, width := range widths {
+		variant, err := makeSize(width)
+		if err != nil {
+			return nil, "", err
+		}
+		variants = append(variants, variant)
 	}
-	img.Large, err = makeSize(1920)
-	return err
+	return variants, mime, nil
 }
 
 // Bilinear resampling, bounded by the output dimensions. No external native

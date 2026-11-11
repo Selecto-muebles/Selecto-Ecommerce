@@ -68,6 +68,12 @@ func TestCarouselMediaCacheVideoAndPublicationIsolation(t *testing.T) {
 	if w = get(path+"?w=960", map[string]string{"If-None-Match": w.Header().Get("ETag")}); w.Code != 304 || w.Body.Len() != 0 {
 		t.Fatalf("cache miss %d", w.Code)
 	}
+	if versioned := get(path+"?w=960&v=1", nil); versioned.Code != 200 || versioned.Header().Get("Cache-Control") != "public, max-age=86400, immutable" {
+		t.Fatal("matching version should retain a browser-cacheable cover")
+	}
+	if stale := get(path+"?w=960&v=999", nil); stale.Header().Get("Cache-Control") != "public, max-age=60, must-revalidate" {
+		t.Fatal("obsolete version must not make a replacement immutable")
+	}
 	clip, err := os.ReadFile("../../../service/catalog/testdata/clip.mp4")
 	if err != nil {
 		t.Fatal(err)
