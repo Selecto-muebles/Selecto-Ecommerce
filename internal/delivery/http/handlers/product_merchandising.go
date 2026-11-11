@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -127,34 +126,6 @@ func replaceProductOptions(ctx context.Context, tx pgx.Tx, productID int, option
 		}
 	}
 	return nil
-}
-
-func ProductImageHandler(db *database.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id, table, err := productMediaIdentity(c.Param("id"))
-		if err != nil || id <= 0 {
-			apperrors.BadRequest(c, "invalid image id")
-			return
-		}
-		var mimeType string
-		var content []byte
-		var size int
-		var created time.Time
-		if err := db.Pool.QueryRow(c, fmt.Sprintf(`SELECT mime_type,CASE WHEN mime_type='video/mp4' THEN NULL ELSE content END,size_bytes,created_at FROM %s WHERE id=$1`, table), id).Scan(&mimeType, &content, &size, &created); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				apperrors.JSON(c, http.StatusNotFound, apperrors.CodeNotFound, "image not found", nil)
-				return
-			}
-			apperrors.Internal(c)
-			return
-		}
-		c.Header("Cache-Control", "public, max-age=86400, immutable")
-		if mimeType == "video/mp4" {
-			serveProductVideo(c, db, id, size, created)
-			return
-		}
-		c.Data(http.StatusOK, mimeType, content)
-	}
 }
 
 func AdminUploadProductImageHandler(db *database.DB) gin.HandlerFunc {

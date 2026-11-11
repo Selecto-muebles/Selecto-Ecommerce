@@ -166,6 +166,9 @@ func CarouselImageHandler(store editorial.Store, public bool) gin.HandlerFunc {
 			carouselError(c, err)
 			return
 		}
+		if public && c.Query("v") == strconv.Itoa(img.Version) {
+			cache = "public, max-age=86400, immutable"
+		}
 		c.Header("Cache-Control", cache)
 		c.Header("Content-Type", img.MIME)
 		digest := sha256.Sum256(img.Content)
