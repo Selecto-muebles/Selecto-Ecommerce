@@ -65,8 +65,15 @@ func prepareRenditions(content []byte, widths ...int) ([]Rendition, string, erro
 			w = max(1, w*1920/h)
 			h = 1920
 		}
-		dst := image.NewRGBA(image.Rect(0, 0, w, h))
-		resizePoster(dst, source)
+		// Re-sampling an already correctly sized photo visits every pixel four
+		// times and allocates millions of temporary colors. Encode it directly.
+		var dst image.Image = source
+		unchanged := w == cfg.Width && h == cfg.Height
+		if !unchanged {
+			resized := image.NewRGBA(image.Rect(0, 0, w, h))
+			resizePoster(resized, source)
+			dst = resized
+		}
 		var jpg bytes.Buffer
 		if err := jpeg.Encode(&jpg, dst, &jpeg.Options{Quality: 82}); err != nil {
 			return Rendition{}, err
@@ -74,12 +81,17 @@ func prepareRenditions(content []byte, widths ...int) ([]Rendition, string, erro
 		result := Rendition{jpg.Bytes(), "image/jpeg"}
 		if format == "png" {
 			// Keep alpha for transparent artwork instead of flattening it.
-			var pngData bytes.Buffer
-			if err := png.Encode(&pngData, dst); err != nil {
-				return Rendition{}, err
+			pngContent := content
+			if !unchanged {
+				var pngData bytes.Buffer
+				if err := png.Encode(&pngData, dst); err != nil {
+					return Rendition{}, err
+				}
+				pngContent = pngData.Bytes()
 			}
-			if !dst.Opaque() || pngData.Len() < len(result.Content) {
-				result = Rendition{pngData.Bytes(), "image/png"}
+			opaque, known := dst.(interface{ Opaque() bool })
+			if !known || !opaque.Opaque() || len(pngContent) < len(result.Content) {
+				result = Rendition{pngContent, "image/png"}
 			}
 		}
 		if cfg.Width == w && cfg.Height == h && len(content) < len(result.Content) {
@@ -102,6 +114,13 @@ func prepareRenditions(content []byte, widths ...int) ([]Rendition, string, erro
 // image processors or new runtime dependencies are needed.
 func resizePoster(dst *image.RGBA, src image.Image) {
 	b := src.Bounds()
+	sample := func(x, y int) (uint32, uint32, uint32, uint32) { return src.At(x, y).RGBA() }
+	if fast, ok := src.(image.RGBA64Image); ok {
+		sample = func(x, y int) (uint32, uint32, uint32, uint32) {
+			pixel := fast.RGBA64At(x, y)
+			return uint32(pixel.R), uint32(pixel.G), uint32(pixel.B), uint32(pixel.A)
+		}
+	}
 	dw, dh := dst.Bounds().Dx(), dst.Bounds().Dy()
 	for y := 0; y < dh; y++ {
 		sy := (float64(y)+.5)*float64(b.Dy())/float64(dh) - .5
@@ -115,10 +134,10 @@ func resizePoster(dst *image.RGBA, src image.Image) {
 			fx := sx - float64(x0)
 			x0 = max(0, min(x0, b.Dx()-1))
 			x1 := min(x0+1, b.Dx()-1)
-			r0, g0, b0, a0 := src.At(b.Min.X+x0, b.Min.Y+y0).RGBA()
-			r1, g1, b1, a1 := src.At(b.Min.X+x1, b.Min.Y+y0).RGBA()
-			r2, g2, b2, a2 := src.At(b.Min.X+x0, b.Min.Y+y1).RGBA()
-			r3, g3, b3, a3 := src.At(b.Min.X+x1, b.Min.Y+y1).RGBA()
+			r0, g0, b0, a0 := sample(b.Min.X+x0, b.Min.Y+y0)
+			r1, g1, b1, a1 := sample(b.Min.X+x1, b.Min.Y+y0)
+			r2, g2, b2, a2 := sample(b.Min.X+x0, b.Min.Y+y1)
+			r3, g3, b3, a3 := sample(b.Min.X+x1, b.Min.Y+y1)
 			mix := func(a, b, c, d uint32) uint8 {
 				return uint8(((float64(a)*(1-fx)+float64(b)*fx)*(1-fy) + (float64(c)*(1-fx)+float64(d)*fx)*fy) / 257)
 			}
