@@ -20,6 +20,7 @@ type Config struct {
 	InternalWebhookSecret     string
 	CORSAllowedOrigins        []string
 	RateLimitPerMinute        int
+	RateLimitEdgeSecret       string
 	OrderPendingTTL           time.Duration
 	ReleaseWorkerInterval     time.Duration
 	PaymentsRequestTimeout    time.Duration
@@ -85,6 +86,9 @@ func (c *Config) Validate() error {
 	}
 	if c.RateLimitPerMinute <= 0 {
 		return errors.New("RATE_LIMIT_PER_MINUTE must be positive")
+	}
+	if c.RateLimitEdgeSecret != "" && len(c.RateLimitEdgeSecret) < 32 {
+		return errors.New("RATE_LIMIT_EDGE_SECRET must contain at least 32 characters when enabled")
 	}
 	if c.ReleaseWorkerBatchSize <= 0 || c.ReleaseWorkerBatchSize > 1000 {
 		return errors.New("RELEASE_WORKER_BATCH_SIZE must be between 1 and 1000")
