@@ -38,8 +38,9 @@ func SetupRouter(
 	r.Use(middleware.RequestContext(logger))
 	r.Use(middleware.SecurityHeaders(cfg.AppEnv))
 	r.Use(middleware.RequestBodyLimit(1 << 20))
-	r.Use(middleware.RateLimit(cfg.RateLimitPerMinute))
 	r.Use(cors.New(corsConfig(cfg)))
+	r.Use(middleware.RateLimitClient(cfg.RateLimitEdgeSecret))
+	r.Use(middleware.RateLimit(cfg.RateLimitPerMinute))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -195,7 +196,7 @@ func corsConfig(cfg *config.Config) cors.Config {
 		AllowOrigins:     cfg.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Correlation-ID", "X-Service-Name", "X-Service-Timestamp", "X-Service-Signature", "Idempotency-Key", "X-Selecto-Signature", "X-Selecto-Timestamp", "X-Destry-Signature", "X-Destry-Timestamp"},
-		ExposeHeaders:    []string{"X-Request-ID", "X-Correlation-ID"},
+		ExposeHeaders:    []string{"X-Request-ID", "X-Correlation-ID", "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"},
 		AllowCredentials: true,
 	}
 

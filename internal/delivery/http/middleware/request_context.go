@@ -105,6 +105,8 @@ func RequestContext(logger *slog.Logger) gin.HandlerFunc {
 			"latency_ms", completedAt.Sub(start).Milliseconds(),
 			"client_ip", c.ClientIP(),
 			"suppressed_since_last", suppressed,
+			"rate_limit_policy", c.GetString("rate_limit_policy"),
+			"verified_edge_client", c.GetString(rateLimitClientKey) != "",
 		}
 		if span := trace.SpanContextFromContext(c.Request.Context()); span.IsValid() && span.IsSampled() {
 			fields = append(fields, "trace_id", span.TraceID().String(), "span_id", span.SpanID().String())

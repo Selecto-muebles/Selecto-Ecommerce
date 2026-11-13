@@ -26,6 +26,7 @@ func LoadConfig() *Config {
 		InternalWebhookSecret:     getEnv("INTERNAL_WEBHOOK_SECRET", ""),
 		CORSAllowedOrigins:        splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
 		RateLimitPerMinute:        getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
+		RateLimitEdgeSecret:       strings.TrimSpace(getEnv("RATE_LIMIT_EDGE_SECRET", "")),
 		OrderPendingTTL:           getDurationEnv("ORDER_PENDING_TTL", 15*time.Minute),
 		ReleaseWorkerInterval:     getDurationEnv("RELEASE_WORKER_INTERVAL", time.Minute),
 		PaymentsRequestTimeout:    getDurationEnv("PAYMENTS_REQUEST_TIMEOUT", 27*time.Second),
